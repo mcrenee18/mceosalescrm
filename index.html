@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sales CRM 工作台</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <section id="loginShell" class="login-shell">
+      <form id="loginForm" class="login-card">
+        <div class="brand-block login-brand">
+          <div class="brand-mark">CRM</div>
+          <div>
+            <h1>Sales CRM</h1>
+            <p>团队销售工作台</p>
+          </div>
+        </div>
+        <div>
+          <p class="eyebrow">Secure Access</p>
+          <h2>登录账号</h2>
+        </div>
+        <label>
+          用户名
+          <input id="loginUsername" autocomplete="username" required />
+        </label>
+        <label>
+          密码
+          <input id="loginPassword" type="password" autocomplete="current-password" required />
+        </label>
+        <p id="loginError" class="login-error" hidden></p>
+        <button class="primary-button" type="submit">登录</button>
+        <p class="login-hint">默认管理员：admin / admin123。上线前请更改密码。</p>
+      </form>
+    </section>
+
+    <div id="appShell" class="app-shell" hidden>
+      <aside class="sidebar">
+        <div class="brand-block">
+          <div class="brand-mark">CRM</div>
+          <div>
+            <h1>Sales CRM</h1>
+            <p>团队销售工作台</p>
+          </div>
+        </div>
+
+        <nav class="nav-list" aria-label="主要导航">
+          <button class="nav-item active" data-view="dashboard">Dashboard</button>
+          <button class="nav-item" data-view="pipeline">销售看板</button>
+          <button class="nav-item" data-view="customers">客户与线索</button>
+          <button class="nav-item" data-view="activities">跟进记录</button>
+          <button class="nav-item admin-only" data-view="accounts">团队账号</button>
+        </nav>
+
+        <div class="sidebar-panel">
+          <span class="panel-label">本月目标</span>
+          <strong id="monthTarget">RM 180,000</strong>
+          <div class="progress-track" aria-hidden="true">
+            <div id="targetProgress" class="progress-fill"></div>
+          </div>
+          <p id="targetCopy">正在计算...</p>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">云端可部署 · SQLite 数据库 · 登录权限</p>
+            <h2 id="pageTitle">Dashboard</h2>
+          </div>
+          <div class="topbar-actions">
+            <div class="search-box">
+              <span aria-hidden="true">⌕</span>
+              <input id="globalSearch" type="search" placeholder="搜索客户、电话、负责人..." />
+            </div>
+            <button id="exportBackup" class="ghost-button" type="button">Export Backup</button>
+            <button id="importBackup" class="ghost-button admin-only" type="button">Import Backup</button>
+            <input id="backupFile" type="file" accept="application/json,.json" hidden />
+            <button id="seedButton" class="ghost-button admin-only" type="button">重置示例数据</button>
+            <button id="openCustomerForm" class="primary-button" type="button">新增客户</button>
+            <div class="user-chip">
+              <span id="currentUserLabel">-</span>
+              <small id="currentRoleLabel">-</small>
+            </div>
+            <button id="logoutButton" class="ghost-button" type="button">退出</button>
+          </div>
+        </header>
+
+        <div id="statusBanner" class="status-banner" hidden></div>
+
+        <section id="dashboardView" class="view active-view">
+          <div class="metrics-grid">
+            <article class="metric-card">
+              <span>客户总数</span>
+              <strong id="metricCustomers">0</strong>
+              <p>包含客户与潜在客户</p>
+            </article>
+            <article class="metric-card">
+              <span>销售机会金额</span>
+              <strong id="metricPipeline">RM 0</strong>
+              <p>进行中机会总额</p>
+            </article>
+            <article class="metric-card">
+              <span>本月已成交</span>
+              <strong id="metricWon">RM 0</strong>
+              <p>状态为客户</p>
+            </article>
+            <article class="metric-card warning">
+              <span>今日待跟进</span>
+              <strong id="metricDue">0</strong>
+              <p>需要团队处理</p>
+            </article>
+          </div>
+
+          <div class="dashboard-layout">
+            <section class="work-section team-section">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Team Monitor</p>
+                  <h3>团队进展</h3>
+                </div>
+                <select id="ownerFilter" aria-label="负责人筛选">
+                  <option value="all">全部负责人</option>
+                </select>
+              </div>
+              <div id="teamList" class="team-list"></div>
+            </section>
+
+            <section class="work-section">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Next Actions</p>
+                  <h3>待跟进事项</h3>
+                </div>
+                <button id="openActivityForm" class="small-button" type="button">新增跟进</button>
+              </div>
+              <div id="dueList" class="due-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="pipelineView" class="view">
+          <div class="pipeline-toolbar">
+            <div>
+              <p class="eyebrow">Sales Flow</p>
+              <h3>广告 → 3天免费 Webinar → Booster → Closing → Follow up</h3>
+            </div>
+            <select id="stageOwnerFilter" aria-label="看板负责人筛选">
+              <option value="all">全部负责人</option>
+            </select>
+          </div>
+          <div id="kanbanBoard" class="kanban-board" aria-live="polite"></div>
+        </section>
+
+        <section id="customersView" class="view">
+          <div class="section-heading table-heading">
+            <div>
+              <p class="eyebrow">Contacts</p>
+              <h3>客户与潜在客户</h3>
+            </div>
+            <div class="filter-row">
+              <select id="statusFilter" aria-label="状态筛选">
+                <option value="all">全部状态</option>
+                <option value="潜在客户">潜在客户</option>
+                <option value="客户">客户</option>
+                <option value="暂停">暂停</option>
+              </select>
+              <select id="sourceFilter" aria-label="来源筛选">
+                <option value="all">全部来源</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>姓名</th>
+                  <th>联系方式</th>
+                  <th>来源</th>
+                  <th>状态</th>
+                  <th>负责人</th>
+                  <th>机会金额</th>
+                  <th>下次跟进</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="customerTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="activitiesView" class="view">
+          <div class="section-heading table-heading">
+            <div>
+              <p class="eyebrow">Activities</p>
+              <h3>跟进记录</h3>
+            </div>
+            <div class="filter-row">
+              <select id="activityTypeFilter" aria-label="跟进类型筛选">
+                <option value="all">全部类型</option>
+                <option value="通话">通话</option>
+                <option value="微信">微信</option>
+                <option value="会议">会议</option>
+                <option value="备注">备注</option>
+              </select>
+            </div>
+          </div>
+          <div id="activityTimeline" class="timeline"></div>
+        </section>
+
+        <section id="accountsView" class="view">
+          <div class="accounts-layout">
+            <section class="work-section">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Access Control</p>
+                  <h3>新增团队账号</h3>
+                </div>
+              </div>
+              <form id="userForm" class="account-form">
+                <label>
+                  用户名
+                  <input id="newUsername" required />
+                </label>
+                <label>
+                  显示名称
+                  <input id="newDisplayName" required />
+                </label>
+                <label>
+                  角色
+                  <select id="newRole">
+                    <option value="sales">销售</option>
+                    <option value="admin">管理员</option>
+                  </select>
+                </label>
+                <label>
+                  对应负责人
+                  <input id="newOwnerName" placeholder="例如 Mei / Jason" />
+                </label>
+                <label>
+                  临时密码
+                  <input id="newPassword" type="password" required />
+                </label>
+                <button class="primary-button" type="submit">创建账号</button>
+              </form>
+            </section>
+
+            <section class="work-section">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Users</p>
+                  <h3>账号列表</h3>
+                </div>
+              </div>
+              <div id="userList" class="user-list"></div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="customerDialog" class="modal">
+      <form id="customerForm" method="dialog">
+        <div class="modal-heading">
+          <div>
+            <p class="eyebrow">Contact</p>
+            <h3 id="customerModalTitle">新增客户</h3>
+          </div>
+          <button class="icon-button" value="cancel" aria-label="关闭" type="button" data-close-dialog>×</button>
+        </div>
+        <input type="hidden" id="customerId" />
+        <div class="form-grid">
+          <label>
+            姓名
+            <input id="customerName" required />
+          </label>
+          <label>
+            电话
+            <input id="customerPhone" required />
+          </label>
+          <label>
+            邮箱
+            <input id="customerEmail" type="email" />
+          </label>
+          <label>
+            来源
+            <input id="customerSource" required />
+          </label>
+          <label>
+            状态
+            <select id="customerStatus">
+              <option>潜在客户</option>
+              <option>客户</option>
+              <option>暂停</option>
+            </select>
+          </label>
+          <label>
+            负责人
+            <input id="customerOwner" required />
+          </label>
+          <label>
+            机会金额
+            <input id="dealValue" type="number" min="0" step="100" required />
+          </label>
+          <label>
+            销售阶段
+            <select id="dealStage"></select>
+          </label>
+          <label>
+            预计成交日期
+            <input id="expectedClose" type="date" required />
+          </label>
+          <label>
+            下次跟进
+            <input id="nextFollowUp" type="date" required />
+          </label>
+        </div>
+        <label class="full-field">
+          备注
+          <textarea id="customerNote" rows="3"></textarea>
+        </label>
+        <div class="modal-actions">
+          <button class="ghost-button" type="button" data-close-dialog>取消</button>
+          <button class="primary-button" type="submit">保存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="activityDialog" class="modal">
+      <form id="activityForm" method="dialog">
+        <div class="modal-heading">
+          <div>
+            <p class="eyebrow">Follow Up</p>
+            <h3>新增跟进记录</h3>
+          </div>
+          <button class="icon-button" value="cancel" aria-label="关闭" type="button" data-close-dialog>×</button>
+        </div>
+        <div class="form-grid">
+          <label>
+            客户
+            <select id="activityCustomer" required></select>
+          </label>
+          <label>
+            类型
+            <select id="activityType">
+              <option>通话</option>
+              <option>微信</option>
+              <option>会议</option>
+              <option>备注</option>
+            </select>
+          </label>
+          <label>
+            日期
+            <input id="activityDate" type="date" required />
+          </label>
+          <label>
+            负责人
+            <input id="activityOwner" required />
+          </label>
+        </div>
+        <label class="full-field">
+          内容
+          <textarea id="activityNote" rows="4" required></textarea>
+        </label>
+        <div class="modal-actions">
+          <button class="ghost-button" type="button" data-close-dialog>取消</button>
+          <button class="primary-button" type="submit">保存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

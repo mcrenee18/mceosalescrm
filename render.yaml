@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: sales-crm
+    runtime: python
+    region: singapore
+    buildCommand: ""
+    startCommand: python server.py
+    disk:
+      name: crm-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: CRM_HOST
+        value: 0.0.0.0
+      - key: CRM_DB_PATH
+        value: /var/data/crm.sqlite3
+      - key: CRM_COOKIE_SECURE
+        value: "1"
