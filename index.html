@@ -15,8 +15,8 @@
             <span>CRM</span>
           </div>
           <div>
-            <h1>Sales CRM</h1>
-            <p>团队销售工作台</p>
+            <h1 class="brand-name">Sales CRM</h1>
+            <p class="brand-tagline">团队销售工作台</p>
           </div>
         </div>
         <div>
@@ -45,8 +45,8 @@
             <span>CRM</span>
           </div>
           <div>
-            <h1>Sales CRM</h1>
-            <p>团队销售工作台</p>
+            <h1 class="brand-name">Sales CRM</h1>
+            <p class="brand-tagline">团队销售工作台</p>
           </div>
         </div>
 
@@ -56,6 +56,7 @@
           <button class="nav-item" data-view="customers">客户与线索</button>
           <button class="nav-item" data-view="activities">跟进记录</button>
           <button class="nav-item admin-only" data-view="accounts">团队账号</button>
+          <button class="nav-item admin-only" data-view="settings">系统设置</button>
         </nav>
 
         <div class="sidebar-panel">
@@ -149,7 +150,7 @@
           <div class="pipeline-toolbar">
             <div>
               <p class="eyebrow">Sales Flow</p>
-              <h3>广告 → 3天免费 Webinar → Booster → Closing → Follow up</h3>
+              <h3 id="pipelineFlowTitle">广告 → 3天免费 Webinar → Booster → Closing → Follow up</h3>
             </div>
             <select id="stageOwnerFilter" aria-label="看板负责人筛选">
               <option value="all">全部负责人</option>
@@ -261,6 +262,37 @@
               <div id="userList" class="user-list"></div>
             </section>
           </div>
+        </section>
+
+        <section id="settingsView" class="view">
+          <section class="work-section settings-section">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Customization</p>
+                <h3>系统设置</h3>
+              </div>
+            </div>
+            <form id="settingsForm" class="settings-form">
+              <label>
+                CRM / 公司名称
+                <input id="settingCompanyName" required />
+              </label>
+              <label>
+                副标题
+                <input id="settingTagline" required />
+              </label>
+              <label>
+                每月销售目标（RM）
+                <input id="settingMonthTarget" type="number" min="1" step="100" required />
+              </label>
+              <label class="full-field">
+                销售流程阶段（每行一个）
+                <textarea id="settingStages" rows="8" required></textarea>
+              </label>
+              <p class="settings-note">删除仍有客户的旧阶段时，这些客户会移到新流程的第一个阶段。</p>
+              <button class="primary-button" type="submit">保存设置</button>
+            </form>
+          </section>
         </section>
       </main>
     </div>

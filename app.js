@@ -1,6 +1,10 @@
 const legacyStorageKey = "sales-crm-prototype-v1";
-const monthTarget = 180000;
-const stages = ["广告", "3天免费 Webinar", "Booster", "Closing", "Follow up"];
+let settings = {
+  companyName: "Sales CRM",
+  tagline: "团队销售工作台",
+  monthTarget: 180000,
+  stages: ["广告", "3天免费 Webinar", "Booster", "Closing", "Follow up"]
+};
 
 let state = { customers: [], activities: [] };
 let currentUser = null;
@@ -28,6 +32,7 @@ const els = {
   customerForm: document.querySelector("#customerForm"),
   activityForm: document.querySelector("#activityForm"),
   userForm: document.querySelector("#userForm"),
+  settingsForm: document.querySelector("#settingsForm"),
   statusBanner: document.querySelector("#statusBanner"),
   backupFile: document.querySelector("#backupFile"),
   currentUserLabel: document.querySelector("#currentUserLabel"),
@@ -62,6 +67,8 @@ async function api(path, options = {}) {
 
 async function boot() {
   const session = await api("/api/me");
+  settings = session.settings || settings;
+  applySettings();
   if (session.user) {
     currentUser = session.user;
     showApp();
@@ -93,11 +100,36 @@ function showApp() {
 
 async function loadState() {
   state = await api("/api/state");
+  settings = state.settings || settings;
   currentUser = state.user || currentUser;
+  applySettings();
   showApp();
   render();
   await offerLegacyMigration();
   if (currentUser.role === "admin") await loadUsers();
+}
+
+function applySettings() {
+  document.title = `${settings.companyName} 工作台`;
+  document.querySelectorAll(".brand-name").forEach((node) => {
+    node.textContent = settings.companyName;
+  });
+  document.querySelectorAll(".brand-tagline").forEach((node) => {
+    node.textContent = settings.tagline;
+  });
+  document.querySelector("#monthTarget").textContent = money(settings.monthTarget);
+  document.querySelector("#pipelineFlowTitle").textContent = settings.stages.join(" → ");
+  document.querySelector("#kanbanBoard").style.gridTemplateColumns =
+    `repeat(${settings.stages.length}, minmax(220px, 1fr))`;
+  renderSettingsForm();
+}
+
+function renderSettingsForm() {
+  if (!currentUser || currentUser.role !== "admin") return;
+  document.querySelector("#settingCompanyName").value = settings.companyName;
+  document.querySelector("#settingTagline").value = settings.tagline;
+  document.querySelector("#settingMonthTarget").value = settings.monthTarget;
+  document.querySelector("#settingStages").value = settings.stages.join("\n");
 }
 
 async function loadUsers() {
@@ -227,7 +259,7 @@ function renderSelectOptions() {
 
   const dealStage = document.querySelector("#dealStage");
   dealStage.innerHTML = "";
-  stages.forEach((stage) => {
+  settings.stages.forEach((stage) => {
     dealStage.insertAdjacentHTML("beforeend", `<option>${escapeHtml(stage)}</option>`);
   });
 
@@ -254,10 +286,10 @@ function renderDashboard() {
   document.querySelector("#metricWon").textContent = money(wonTotal);
   document.querySelector("#metricDue").textContent = dueToday.length;
 
-  const progress = Math.min(Math.round((wonTotal / monthTarget) * 100), 100);
+  const progress = Math.min(Math.round((wonTotal / settings.monthTarget) * 100), 100);
   document.querySelector("#targetProgress").style.width = `${progress}%`;
   document.querySelector("#targetCopy").textContent =
-    `${progress}% 已完成，距离目标还差 ${money(Math.max(monthTarget - wonTotal, 0))}`;
+    `${progress}% 已完成，距离目标还差 ${money(Math.max(settings.monthTarget - wonTotal, 0))}`;
 
   renderTeamList();
   renderDueList(dueToday);
@@ -279,7 +311,7 @@ function renderTeamList() {
       const total = owned.reduce((sum, customer) => sum + Number(customer.dealValue || 0), 0);
       const due = owned.filter((customer) => customer.nextFollowUp <= todayISO()).length;
       const closing = owned.filter((customer) => customer.stage === "Closing").length;
-      const percent = Math.min(Math.round((total / monthTarget) * 100), 100);
+      const percent = Math.min(Math.round((total / settings.monthTarget) * 100), 100);
 
       return `
         <div class="team-row">
@@ -328,7 +360,7 @@ function renderKanban() {
   const customers = filteredCustomers();
   const board = document.querySelector("#kanbanBoard");
 
-  board.innerHTML = stages
+  board.innerHTML = settings.stages
     .map((stage) => {
       const deals = customers.filter((customer) => customer.stage === stage);
       const total = deals.reduce((sum, customer) => sum + Number(customer.dealValue || 0), 0);
@@ -468,14 +500,15 @@ function render() {
 }
 
 function setView(view) {
-  if (view === "accounts" && currentUser.role !== "admin") view = "dashboard";
+  if (["accounts", "settings"].includes(view) && currentUser.role !== "admin") view = "dashboard";
   activeView = view;
   const titles = {
     dashboard: "Dashboard",
     pipeline: "销售看板",
     customers: "客户与线索",
     activities: "跟进记录",
-    accounts: "团队账号"
+    accounts: "团队账号",
+    settings: "系统设置"
   };
   els.pageTitle.textContent = titles[view];
   els.navItems.forEach((item) => item.classList.toggle("active", item.dataset.view === view));
@@ -495,7 +528,7 @@ function openCustomerForm(id) {
   document.querySelector("#customerOwner").value =
     customer?.owner || (currentUser.role === "sales" ? currentUser.ownerName : getOwners()[0] || "");
   document.querySelector("#dealValue").value = customer?.dealValue || 0;
-  document.querySelector("#dealStage").value = customer?.stage || stages[0];
+  document.querySelector("#dealStage").value = customer?.stage || settings.stages[0];
   document.querySelector("#expectedClose").value = customer?.expectedClose || todayISO();
   document.querySelector("#nextFollowUp").value = customer?.nextFollowUp || todayISO();
   document.querySelector("#customerNote").value = customer?.note || "";
@@ -516,11 +549,11 @@ function openActivityForm(customerId = "") {
 async function moveStage(id, direction) {
   const customer = getCustomer(id);
   if (!customer) return;
-  const currentIndex = stages.indexOf(customer.stage);
-  const nextIndex = Math.min(Math.max(currentIndex + Number(direction), 0), stages.length - 1);
+  const currentIndex = settings.stages.indexOf(customer.stage);
+  const nextIndex = Math.min(Math.max(currentIndex + Number(direction), 0), settings.stages.length - 1);
   await api(`/api/customers/${encodeURIComponent(id)}/stage`, {
     method: "PATCH",
-    body: JSON.stringify({ stage: stages[nextIndex] })
+    body: JSON.stringify({ stage: settings.stages[nextIndex] })
   });
   await loadState();
 }
@@ -604,6 +637,26 @@ async function deleteUser(id) {
   await loadUsers();
 }
 
+async function saveSystemSettings() {
+  const nextSettings = {
+    companyName: document.querySelector("#settingCompanyName").value.trim(),
+    tagline: document.querySelector("#settingTagline").value.trim(),
+    monthTarget: Number(document.querySelector("#settingMonthTarget").value),
+    stages: document
+      .querySelector("#settingStages")
+      .value.split("\n")
+      .map((stage) => stage.trim())
+      .filter(Boolean)
+  };
+  const payload = await api("/api/settings", {
+    method: "POST",
+    body: JSON.stringify(nextSettings)
+  });
+  settings = payload.settings;
+  showStatus("系统设置已保存。");
+  await loadState();
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -670,6 +723,11 @@ document.querySelector("#seedButton").addEventListener("click", async () => {
 els.userForm.addEventListener("submit", (event) => {
   event.preventDefault();
   createUser().catch((error) => showStatus(error.message, true));
+});
+
+els.settingsForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  saveSystemSettings().catch((error) => showStatus(error.message, true));
 });
 
 document.addEventListener("click", (event) => {

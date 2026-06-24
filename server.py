@@ -27,6 +27,12 @@ SESSION_COOKIE = "crm_session"
 COOKIE_SECURE = os.environ.get("CRM_COOKIE_SECURE", "0") == "1"
 
 STAGES = ["广告", "3天免费 Webinar", "Booster", "Closing", "Follow up"]
+DEFAULT_SETTINGS = {
+    "companyName": "Sales CRM",
+    "tagline": "团队销售工作台",
+    "monthTarget": 180000,
+    "stages": STAGES,
+}
 
 SEED_USERS = [
     {"username": "admin", "password": "admin123", "displayName": "Admin", "role": "admin", "ownerName": ""},
@@ -246,8 +252,14 @@ def init_db() -> None:
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
             """
         )
+        ensure_settings(conn)
         if conn.execute("SELECT COUNT(*) AS count FROM customers").fetchone()["count"] == 0:
             replace_all(conn, SEED_DATA)
         if DATABASE_URL:
@@ -255,6 +267,68 @@ def init_db() -> None:
         elif conn.execute("SELECT COUNT(*) AS count FROM users").fetchone()["count"] == 0:
             for user in SEED_USERS:
                 create_user(conn, user)
+
+
+def ensure_settings(conn) -> None:
+    for key, value in DEFAULT_SETTINGS.items():
+        conn.execute(
+            """
+            INSERT INTO settings (key, value) VALUES (?, ?)
+            ON CONFLICT(key) DO NOTHING
+            """,
+            (key, json.dumps(value, ensure_ascii=False)),
+        )
+
+
+def read_settings(conn=None) -> dict:
+    if conn is None:
+        with db() as connection:
+            return read_settings(connection)
+
+    rows = conn.execute("SELECT key, value FROM settings").fetchall()
+    settings = dict(DEFAULT_SETTINGS)
+    for row in rows:
+        settings[row["key"]] = json.loads(row["value"])
+    return settings
+
+
+def save_settings(payload: dict) -> dict:
+    company_name = str(payload.get("companyName") or "").strip()
+    tagline = str(payload.get("tagline") or "").strip()
+    month_target = float(payload.get("monthTarget") or 0)
+    stages = [str(item).strip() for item in payload.get("stages", []) if str(item).strip()]
+    stages = list(dict.fromkeys(stages))
+
+    if not company_name or not tagline:
+        raise ValueError("Company name and tagline are required")
+    if month_target <= 0:
+        raise ValueError("Month target must be greater than zero")
+    if not 2 <= len(stages) <= 10:
+        raise ValueError("Sales flow needs between 2 and 10 stages")
+
+    settings = {
+        "companyName": company_name,
+        "tagline": tagline,
+        "monthTarget": month_target,
+        "stages": stages,
+    }
+    with db() as conn:
+        for key, value in settings.items():
+            conn.execute(
+                """
+                INSERT INTO settings (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (key, json.dumps(value, ensure_ascii=False)),
+            )
+        customer_rows = conn.execute("SELECT id, stage FROM customers").fetchall()
+        for customer in customer_rows:
+            if customer["stage"] not in stages:
+                conn.execute(
+                    "UPDATE customers SET stage = ?, updated_at = ? WHERE id = ?",
+                    (stages[0], now_iso(), customer["id"]),
+                )
+    return settings
 
 
 def sync_cloud_admin(conn) -> None:
@@ -425,6 +499,7 @@ def read_state(user: dict) -> dict:
                 """,
                 (user["ownerName"],),
             ).fetchall()
+        settings = read_settings(conn)
 
     customers = [
         {
@@ -439,7 +514,7 @@ def read_state(user: dict) -> dict:
         {"id": row["id"], "customerId": row["customer_id"], "type": row["type"], "date": row["date"], "owner": row["owner"], "note": row["note"]}
         for row in activity_rows
     ]
-    return {"customers": customers, "activities": activities, "user": user}
+    return {"customers": customers, "activities": activities, "user": user, "settings": settings}
 
 
 def read_json(handler: SimpleHTTPRequestHandler) -> dict:
@@ -459,7 +534,7 @@ class CRMHandler(SimpleHTTPRequestHandler):
         try:
             if path == "/api/me":
                 user = self.current_user(required=False)
-                self.send_json({"user": user})
+                self.send_json({"user": user, "settings": read_settings()})
                 return
             if path == "/api/state":
                 self.send_json(read_state(self.current_user()))
@@ -476,6 +551,10 @@ class CRMHandler(SimpleHTTPRequestHandler):
                 with db() as conn:
                     users = [public_user(row) for row in conn.execute("SELECT * FROM users ORDER BY role, username")]
                 self.send_json({"users": users})
+                return
+            if path == "/api/settings":
+                self.require_admin()
+                self.send_json({"settings": read_settings()})
                 return
             self.serve_static(path)
         except PermissionError as exc:
@@ -528,6 +607,11 @@ class CRMHandler(SimpleHTTPRequestHandler):
                     user = create_user(conn, read_json(self))
                 self.send_json({"ok": True, "user": user})
                 return
+            if path == "/api/settings":
+                self.require_admin()
+                settings = save_settings(read_json(self))
+                self.send_json({"ok": True, "settings": settings})
+                return
             self.send_error_json(404, "API route not found")
         except PermissionError as exc:
             self.send_error_json(403 if str(exc) == "Forbidden" else 401, str(exc))
@@ -547,7 +631,7 @@ class CRMHandler(SimpleHTTPRequestHandler):
                 customer_id = unquote(parts[2])
                 payload = read_json(self)
                 stage = str(payload.get("stage") or "").strip()
-                if stage not in STAGES:
+                if stage not in read_settings()["stages"]:
                     raise ValueError("Invalid stage")
                 self.require_customer_access(customer_id, user)
                 with db() as conn:

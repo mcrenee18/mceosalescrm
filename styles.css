@@ -433,6 +433,28 @@ textarea {
   gap: 12px;
 }
 
+.settings-section {
+  max-width: 720px;
+}
+
+.settings-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.settings-form .full-field,
+.settings-form .settings-note,
+.settings-form .primary-button {
+  grid-column: 1 / -1;
+}
+
+.settings-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .user-list {
   display: grid;
   gap: 10px;
@@ -742,7 +764,8 @@ label {
   .metrics-grid,
   .dashboard-layout,
   .accounts-layout,
-  .form-grid {
+  .form-grid,
+  .settings-form {
     grid-template-columns: 1fr;
   }
 
