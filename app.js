@@ -976,24 +976,46 @@ els.customerForm.addEventListener("submit", async (event) => {
   formError.hidden = true;
   saveButton.disabled = true;
   saveButton.textContent = "保存中...";
-  const customer = {
-    id: document.querySelector("#customerId").value,
-    name: document.querySelector("#customerName").value.trim(),
-    phone: document.querySelector("#customerPhone").value.trim(),
-    email: document.querySelector("#customerEmail").value.trim(),
-    source: document.querySelector("#customerSource").value.trim(),
-    status: document.querySelector("#customerStatus").value,
-    owner: document.querySelector("#customerOwner").value.trim(),
-    dealValue: isWonStatus(document.querySelector("#customerStatus").value)
-      ? Number(document.querySelector("#dealValue").value || 0)
-      : 0,
-    stage: document.querySelector("#dealStage").value,
-    expectedClose: document.querySelector("#expectedClose").value,
-    nextFollowUp: document.querySelector("#nextFollowUp").value,
-    note: document.querySelector("#customerNote").value.trim()
-  };
 
   try {
+    const customer = {
+      id: document.querySelector("#customerId").value,
+      name: document.querySelector("#customerName").value.trim(),
+      phone: document.querySelector("#customerPhone").value.trim(),
+      email: document.querySelector("#customerEmail").value.trim(),
+      source: document.querySelector("#customerSource").value.trim(),
+      status: document.querySelector("#customerStatus").value,
+      owner: document.querySelector("#customerOwner").value.trim(),
+      dealValue: isWonStatus(document.querySelector("#customerStatus").value)
+        ? Number(document.querySelector("#dealValue").value || 0)
+        : 0,
+      stage: document.querySelector("#dealStage").value,
+      expectedClose: document.querySelector("#expectedClose").value,
+      nextFollowUp: document.querySelector("#nextFollowUp").value,
+      note: document.querySelector("#customerNote").value.trim()
+    };
+
+    const requiredFields = [
+      ["姓名", customer.name],
+      ["电话", customer.phone],
+      ["来源", customer.source],
+      ["状态", customer.status],
+      ["负责人", customer.owner],
+      ["销售阶段", customer.stage],
+      ["预计成交日期", customer.expectedClose],
+      ["下次跟进", customer.nextFollowUp]
+    ];
+    const missing = requiredFields.filter(([, value]) => !value).map(([label]) => label);
+    if (missing.length) {
+      throw new Error(`请填写：${missing.join("、")}`);
+    }
+    if (customer.email && !document.querySelector("#customerEmail").checkValidity()) {
+      throw new Error("Email 格式不正确");
+    }
+    if (isWonStatus(customer.status) && customer.dealValue <= 0) {
+      throw new Error("已成交客户必须填写销售金额");
+    }
+
     const saved = await api("/api/customers", {
       method: "POST",
       body: JSON.stringify(customer)
@@ -1022,10 +1044,11 @@ els.customerForm.addEventListener("submit", async (event) => {
       }
     }
   } catch (error) {
-    formError.textContent = `保存失败：${error.message}`;
+    formError.textContent = `保存失败：${error?.message || "未知错误，请通知管理员"}`;
     formError.hidden = false;
     saveButton.disabled = false;
     saveButton.textContent = "重新保存";
+    formError.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 });
 
