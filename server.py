@@ -39,6 +39,8 @@ DEFAULT_SETTINGS = {
         {"name": "暂停", "color": "#b42318", "isWon": False},
     ],
     "activityTypes": ["通话", "微信", "会议", "备注"],
+    "logoDataUrl": "",
+    "ownerTargets": {},
 }
 
 SEED_USERS = [
@@ -308,6 +310,12 @@ def read_settings(conn=None) -> dict:
     settings["activityTypes"] = [
         str(item).strip() for item in settings.get("activityTypes", []) if str(item).strip()
     ] or list(DEFAULT_SETTINGS["activityTypes"])
+    settings["logoDataUrl"] = str(settings.get("logoDataUrl") or "")
+    settings["ownerTargets"] = {
+        str(owner).strip(): float(target)
+        for owner, target in settings.get("ownerTargets", {}).items()
+        if str(owner).strip() and float(target) > 0
+    }
     return settings
 
 
@@ -339,6 +347,17 @@ def save_settings(payload: dict) -> dict:
             if str(item).strip()
         )
     )
+    logo_data_url = str(payload.get("logoDataUrl") or "").strip()
+    if logo_data_url and not logo_data_url.startswith("data:image/"):
+        raise ValueError("Logo must be an image")
+    if len(logo_data_url) > 1_500_000:
+        raise ValueError("Logo image is too large")
+    owner_targets = {}
+    for owner, target in payload.get("ownerTargets", {}).items():
+        owner_name = str(owner).strip()
+        target_value = float(target or 0)
+        if owner_name and target_value > 0:
+            owner_targets[owner_name] = target_value
 
     if not company_name or not tagline:
         raise ValueError("Company name and tagline are required")
@@ -358,6 +377,8 @@ def save_settings(payload: dict) -> dict:
         "stages": stages,
         "statuses": statuses,
         "activityTypes": activity_types,
+        "logoDataUrl": logo_data_url,
+        "ownerTargets": owner_targets,
     }
     with db() as conn:
         for key, value in settings.items():

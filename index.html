@@ -11,7 +11,7 @@
       <form id="loginForm" class="login-card">
         <div class="brand-block login-brand">
           <div class="brand-mark logo-frame">
-            <img class="brand-logo" src="./logo.png" alt="公司 Logo" onload="this.nextElementSibling.hidden=true" onerror="this.hidden=true" />
+            <img class="brand-logo" src="./logo.png" alt="公司 Logo" onload="this.nextElementSibling.hidden=true" onerror="this.hidden=true;this.nextElementSibling.hidden=false" />
             <span>CRM</span>
           </div>
           <div>
@@ -41,7 +41,7 @@
       <aside class="sidebar">
         <div class="brand-block">
           <div class="brand-mark logo-frame">
-            <img class="brand-logo" src="./logo.png" alt="公司 Logo" onload="this.nextElementSibling.hidden=true" onerror="this.hidden=true" />
+            <img class="brand-logo" src="./logo.png" alt="公司 Logo" onload="this.nextElementSibling.hidden=true" onerror="this.hidden=true;this.nextElementSibling.hidden=false" />
             <span>CRM</span>
           </div>
           <div>
@@ -273,10 +273,27 @@
                 副标题
                 <input id="settingTagline" required />
               </label>
+              <div class="full-field logo-setting">
+                <label>
+                  公司 Logo
+                  <input id="settingLogoFile" type="file" accept="image/png,image/jpeg,image/webp" />
+                </label>
+                <div class="logo-preview-wrap">
+                  <img id="settingLogoPreview" alt="Logo 预览" />
+                  <button id="removeLogoSetting" class="ghost-button" type="button">移除 Logo</button>
+                </div>
+                <p class="settings-note">建议使用正方形 PNG/WebP，文件小于 1 MB。</p>
+              </div>
               <label>
                 每月销售目标（RM）
                 <input id="settingMonthTarget" type="number" min="1" step="1" required />
               </label>
+              <div class="full-field">
+                <div class="status-settings-heading">
+                  <span>销售个人每月 KPI（RM）</span>
+                </div>
+                <div id="ownerTargetSettings" class="owner-target-settings"></div>
+              </div>
               <label class="full-field">
                 销售流程阶段（每行一个）
                 <textarea id="settingStages" rows="8" required></textarea>

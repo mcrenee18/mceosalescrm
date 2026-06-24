@@ -465,6 +465,55 @@ textarea {
   font-size: 13px;
 }
 
+.logo-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.logo-setting .settings-note {
+  grid-column: 1 / -1;
+}
+
+.logo-preview-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#settingLogoPreview {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.owner-target-settings {
+  display: grid;
+  gap: 8px;
+}
+
+.owner-target-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(140px, 0.6fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.owner-target-row span {
+  font-weight: 700;
+}
+
+.owner-target-row small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
 .status-settings-heading {
   display: flex;
   justify-content: space-between;
@@ -920,6 +969,11 @@ label {
   .accounts-layout,
   .form-grid,
   .settings-form {
+    grid-template-columns: 1fr;
+  }
+
+  .logo-setting,
+  .owner-target-row {
     grid-template-columns: 1fr;
   }
 

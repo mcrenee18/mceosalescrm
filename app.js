@@ -9,7 +9,9 @@ let settings = {
     { name: "已成交", color: "#16805c", isWon: true },
     { name: "暂停", color: "#b42318", isWon: false }
   ],
-  activityTypes: ["通话", "微信", "会议", "备注"]
+  activityTypes: ["通话", "微信", "会议", "备注"],
+  logoDataUrl: "",
+  ownerTargets: {}
 };
 
 let state = { customers: [], activities: [] };
@@ -17,6 +19,7 @@ let currentUser = null;
 let users = [];
 let activeView = "dashboard";
 let draggedStatusIndex = null;
+let pendingLogoDataUrl = "";
 
 const els = {
   loginShell: document.querySelector("#loginShell"),
@@ -124,6 +127,10 @@ function applySettings() {
   document.querySelectorAll(".brand-tagline").forEach((node) => {
     node.textContent = settings.tagline;
   });
+  document.querySelectorAll(".brand-logo").forEach((image) => {
+    image.hidden = false;
+    image.src = settings.logoDataUrl || "./logo.png";
+  });
   document.querySelector("#monthTarget").textContent = money(settings.monthTarget);
   document.querySelector("#kanbanBoard").style.gridTemplateColumns =
     `repeat(${settings.stages.length}, minmax(220px, 1fr))`;
@@ -137,7 +144,37 @@ function renderSettingsForm() {
   document.querySelector("#settingMonthTarget").value = settings.monthTarget;
   document.querySelector("#settingStages").value = settings.stages.join("\n");
   document.querySelector("#settingActivityTypes").value = settings.activityTypes.join("\n");
+  pendingLogoDataUrl = settings.logoDataUrl || "";
+  renderLogoPreview();
   renderStatusSettings();
+  renderOwnerTargets();
+}
+
+function renderLogoPreview() {
+  const preview = document.querySelector("#settingLogoPreview");
+  const removeButton = document.querySelector("#removeLogoSetting");
+  preview.hidden = !pendingLogoDataUrl;
+  removeButton.hidden = !pendingLogoDataUrl;
+  if (pendingLogoDataUrl) preview.src = pendingLogoDataUrl;
+}
+
+function renderOwnerTargets() {
+  const list = document.querySelector("#ownerTargetSettings");
+  if (!list || !currentUser || currentUser.role !== "admin") return;
+  const salesUsers = users.filter((user) => user.role === "sales" && user.ownerName);
+  list.innerHTML = salesUsers.length
+    ? salesUsers
+        .map(
+          (user) => `
+            <label class="owner-target-row">
+              <span>${escapeHtml(user.displayName)} <small>${escapeHtml(user.ownerName)}</small></span>
+              <input type="number" min="1" step="1" data-owner-target="${escapeHtml(user.ownerName)}"
+                value="${escapeHtml(settings.ownerTargets[user.ownerName] || settings.monthTarget)}" required />
+            </label>
+          `
+        )
+        .join("")
+    : '<div class="empty-state">请先建立销售账号。</div>';
 }
 
 function renderStatusSettings() {
@@ -180,6 +217,7 @@ async function loadUsers() {
   const payload = await api("/api/users");
   users = payload.users;
   renderUsers();
+  renderOwnerTargets();
 }
 
 async function offerLegacyMigration() {
@@ -409,7 +447,8 @@ function renderTeamList() {
         (customer) => isWonStatus(customer.status) && customer.expectedClose.startsWith(todayISO().slice(0, 7))
       );
       const ownerSales = ownerWon.reduce((sum, customer) => sum + Number(customer.dealValue || 0), 0);
-      const percent = Math.min(Math.round((ownerSales / settings.monthTarget) * 100), 100);
+      const ownerTarget = Number(settings.ownerTargets[owner] || settings.monthTarget);
+      const percent = Math.min(Math.round((ownerSales / ownerTarget) * 100), 100);
 
       return `
         <div class="team-row">
@@ -419,7 +458,7 @@ function renderTeamList() {
           </div>
           <div>
             <div class="mini-progress"><span style="width:${percent}%"></span></div>
-            <div class="owner-meta">${money(ownerSales)} 本月成交 · ${ownerActivities} 条跟进</div>
+            <div class="owner-meta">${money(ownerSales)} / KPI ${money(ownerTarget)} · ${ownerActivities} 条跟进</div>
           </div>
           <strong>${percent}%</strong>
         </div>
@@ -783,7 +822,14 @@ async function saveSystemSettings() {
       .querySelector("#settingActivityTypes")
       .value.split("\n")
       .map((type) => type.trim())
-      .filter(Boolean)
+      .filter(Boolean),
+    logoDataUrl: pendingLogoDataUrl,
+    ownerTargets: Object.fromEntries(
+      [...document.querySelectorAll("[data-owner-target]")].map((input) => [
+        input.dataset.ownerTarget,
+        Number(input.value)
+      ])
+    )
   };
   const payload = await api("/api/settings", {
     method: "POST",
@@ -809,6 +855,15 @@ function contrastText(hexColor) {
   const green = parseInt(hex.slice(2, 4), 16);
   const blue = parseInt(hex.slice(4, 6), 16);
   return red * 0.299 + green * 0.587 + blue * 0.114 > 160 ? "#1d242d" : "#ffffff";
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("无法读取 Logo 文件"));
+    reader.readAsDataURL(file);
+  });
 }
 
 els.loginForm.addEventListener("submit", async (event) => {
@@ -871,6 +926,29 @@ document.querySelector("#addStatusSetting").addEventListener("click", () => {
   settings.statuses = statusSettingsFromForm();
   settings.statuses.push({ name: "新状态", color: "#66717f", isWon: false });
   renderStatusSettings();
+});
+
+document.querySelector("#settingLogoFile").addEventListener("change", async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+    showStatus("Logo 只支持 PNG、JPG 或 WebP。", true);
+    event.target.value = "";
+    return;
+  }
+  if (file.size > 1_000_000) {
+    showStatus("Logo 文件必须小于 1 MB。", true);
+    event.target.value = "";
+    return;
+  }
+  pendingLogoDataUrl = await fileToDataUrl(file);
+  renderLogoPreview();
+});
+
+document.querySelector("#removeLogoSetting").addEventListener("click", () => {
+  pendingLogoDataUrl = "";
+  document.querySelector("#settingLogoFile").value = "";
+  renderLogoPreview();
 });
 
 document.querySelector("#statusSettingsList").addEventListener("dragstart", (event) => {
