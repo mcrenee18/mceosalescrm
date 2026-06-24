@@ -168,8 +168,8 @@
                 <option value="客户">客户</option>
                 <option value="暂停">暂停</option>
               </select>
-              <select id="sourceFilter" aria-label="来源筛选">
-                <option value="all">全部来源</option>
+              <select id="sourceFilter" aria-label="Batch 筛选">
+                <option value="all">全部 Batch</option>
               </select>
             </div>
           </div>
@@ -179,10 +179,10 @@
                 <tr>
                   <th>姓名</th>
                   <th>联系方式</th>
-                  <th>来源</th>
+                  <th>Batch</th>
                   <th>状态</th>
                   <th>负责人</th>
-                  <th>销售阶段</th>
+                  <th>Booster MDS 月份</th>
                   <th>下次跟进</th>
                   <th>操作</th>
                 </tr>
@@ -324,27 +324,27 @@
             <input id="customerEmail" type="email" />
           </label>
           <label>
-            来源
-            <input id="customerSource" required />
+            Batch
+            <input id="customerSource" placeholder="例如 MDS JUN 2026" required />
           </label>
           <label>
             状态
             <select id="customerStatus"></select>
+          </label>
+          <label id="dealValueField" hidden>
+            Sales Amount（RM）
+            <input id="dealValue" type="number" min="1" step="1" />
           </label>
           <label>
             负责人
             <input id="customerOwner" required />
           </label>
           <label>
-            销售阶段
+            Booster MDS 月份
             <select id="dealStage"></select>
           </label>
-          <label id="dealValueField" hidden>
-            销售金额（RM）
-            <input id="dealValue" type="number" min="1" step="1" />
-          </label>
           <label>
-            预计成交日期
+            Booster 日期
             <input id="expectedClose" type="date" required />
           </label>
           <label>

@@ -173,7 +173,7 @@ function statusDefinition(name) {
 }
 
 function isWonStatus(name) {
-  return Boolean(statusDefinition(name)?.isWon);
+  return Boolean(statusDefinition(name)?.isWon || String(name).includes("成交"));
 }
 
 async function loadUsers() {
@@ -292,7 +292,7 @@ function renderSelectOptions() {
   });
 
   const currentSource = els.sourceFilter.value;
-  els.sourceFilter.innerHTML = '<option value="all">全部来源</option>';
+  els.sourceFilter.innerHTML = '<option value="all">全部 Batch</option>';
   sources.forEach((source) => {
     els.sourceFilter.insertAdjacentHTML(
       "beforeend",
@@ -481,7 +481,7 @@ function renderKanban() {
                       <dl class="deal-details">
                         <div><dt>负责人</dt><dd>${escapeHtml(customer.owner)}</dd></div>
                         <div><dt>状态</dt><dd>${escapeHtml(customer.status)}</dd></div>
-                        <div><dt>销售阶段</dt><dd>${escapeHtml(customer.stage)}</dd></div>
+                        <div><dt>Booster MDS</dt><dd>${escapeHtml(customer.stage)}</dd></div>
                         <div><dt>下次跟进</dt><dd>${escapeHtml(customer.nextFollowUp)}</dd></div>
                       </dl>
                       <div class="deal-actions">
@@ -623,7 +623,7 @@ function openCustomerForm(id) {
   document.querySelector("#customerName").value = customer?.name || "";
   document.querySelector("#customerPhone").value = customer?.phone || "";
   document.querySelector("#customerEmail").value = customer?.email || "";
-  document.querySelector("#customerSource").value = customer?.source || "Facebook 广告";
+  document.querySelector("#customerSource").value = customer?.source || "";
   document.querySelector("#customerStatus").value = customer?.status || settings.statuses[0].name;
   document.querySelector("#customerOwner").value =
     customer?.owner || (currentUser.role === "sales" ? currentUser.ownerName : getOwners()[0] || "");
@@ -998,11 +998,11 @@ els.customerForm.addEventListener("submit", async (event) => {
     const requiredFields = [
       ["姓名", customer.name],
       ["电话", customer.phone],
-      ["来源", customer.source],
+      ["Batch", customer.source],
       ["状态", customer.status],
       ["负责人", customer.owner],
-      ["销售阶段", customer.stage],
-      ["预计成交日期", customer.expectedClose],
+      ["Booster MDS 月份", customer.stage],
+      ["Booster 日期", customer.expectedClose],
       ["下次跟进", customer.nextFollowUp]
     ];
     const missing = requiredFields.filter(([, value]) => !value).map(([label]) => label);
@@ -1013,7 +1013,7 @@ els.customerForm.addEventListener("submit", async (event) => {
       throw new Error("Email 格式不正确");
     }
     if (isWonStatus(customer.status) && customer.dealValue <= 0) {
-      throw new Error("已成交客户必须填写销售金额");
+      throw new Error("成交客户必须填写 Sales Amount");
     }
 
     const saved = await api("/api/customers", {

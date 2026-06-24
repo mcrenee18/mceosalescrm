@@ -631,10 +631,11 @@ class CRMHandler(SimpleHTTPRequestHandler):
                 validate_customer(customer)
                 if customer["status"] not in status_definitions:
                     raise ValueError("Invalid customer status")
-                if not status_definitions[customer["status"]]["isWon"]:
+                is_won = status_definitions[customer["status"]]["isWon"] or "成交" in customer["status"]
+                if not is_won:
                     customer["dealValue"] = 0
                 elif customer["dealValue"] <= 0:
-                    raise ValueError("Sales amount is required for a won customer")
+                    raise ValueError("Sales Amount is required for a won customer")
                 if not can_access_owner(user, customer["owner"]):
                     raise PermissionError("Forbidden")
                 self.save_customer(customer, user)
