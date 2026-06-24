@@ -19,6 +19,7 @@ from urllib.parse import unquote, urlparse
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("CRM_DB_PATH", ROOT / "crm.sqlite3")).resolve()
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 HOST = os.environ.get("CRM_HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT") or os.environ.get("CRM_PORT", "5173"))
 SESSION_DAYS = 7
@@ -130,10 +131,41 @@ SEED_DATA = {
 }
 
 
-def db() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+class Database:
+    def __init__(self) -> None:
+        self.is_postgres = bool(DATABASE_URL)
+        if self.is_postgres:
+            import psycopg
+            from psycopg.rows import dict_row
+
+            self.conn = psycopg.connect(DATABASE_URL, row_factory=dict_row)
+        else:
+            self.conn = sqlite3.connect(DB_PATH)
+            self.conn.row_factory = sqlite3.Row
+
+    def execute(self, sql: str, params: tuple = ()):
+        if self.is_postgres:
+            sql = sql.replace("?", "%s")
+        return self.conn.execute(sql, params)
+
+    def execute_statements(self, statements: str) -> None:
+        for statement in statements.split(";"):
+            if statement.strip():
+                self.execute(statement)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is None:
+            self.conn.commit()
+        else:
+            self.conn.rollback()
+        self.conn.close()
+
+
+def db() -> Database:
+    return Database()
 
 
 def now_iso() -> str:
@@ -152,7 +184,7 @@ def verify_password(password: str, salt_b64: str, hash_b64: str) -> bool:
     return hmac.compare_digest(candidate, hash_b64)
 
 
-def public_user(row: sqlite3.Row) -> dict:
+def public_user(row) -> dict:
     return {
         "id": row["id"],
         "username": row["username"],
@@ -164,8 +196,9 @@ def public_user(row: sqlite3.Row) -> dict:
 
 def init_db() -> None:
     with db() as conn:
-        conn.execute("PRAGMA foreign_keys = ON")
-        conn.executescript(
+        if not conn.is_postgres:
+            conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute_statements(
             """
             CREATE TABLE IF NOT EXISTS customers (
                 id TEXT PRIMARY KEY,
@@ -218,8 +251,27 @@ def init_db() -> None:
         if conn.execute("SELECT COUNT(*) FROM customers").fetchone()[0] == 0:
             replace_all(conn, SEED_DATA)
         if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
-            for user in SEED_USERS:
+            for user in initial_users():
                 create_user(conn, user)
+
+
+def initial_users() -> list[dict]:
+    if not DATABASE_URL:
+        return SEED_USERS
+
+    admin_password = os.environ.get("CRM_ADMIN_PASSWORD", "").strip()
+    if not admin_password:
+        raise RuntimeError("CRM_ADMIN_PASSWORD is required for cloud deployment")
+
+    return [
+        {
+            "username": os.environ.get("CRM_ADMIN_USERNAME", "admin").strip().lower() or "admin",
+            "password": admin_password,
+            "displayName": "Admin",
+            "role": "admin",
+            "ownerName": "",
+        }
+    ]
 
 
 def create_user(conn: sqlite3.Connection, raw: dict) -> dict:
@@ -564,7 +616,7 @@ class CRMHandler(SimpleHTTPRequestHandler):
             raise PermissionError("Forbidden")
         return user
 
-    def require_customer_access(self, customer_id: str, user: dict) -> sqlite3.Row:
+    def require_customer_access(self, customer_id: str, user: dict):
         with db() as conn:
             row = conn.execute("SELECT * FROM customers WHERE id = ?", (customer_id,)).fetchone()
         if not row:
@@ -665,5 +717,8 @@ if __name__ == "__main__":
     init_db()
     server = ThreadingHTTPServer((HOST, PORT), CRMHandler)
     print(f"Sales CRM running at http://{HOST}:{PORT}")
-    print(f"SQLite database: {DB_PATH}")
+    if DATABASE_URL:
+        print("Database: PostgreSQL")
+    else:
+        print(f"SQLite database: {DB_PATH}")
     server.serve_forever()

@@ -1,24 +1,22 @@
 # Sales CRM Prototype
 
-这是一个给销售团队使用的 CRM 网页应用原型，已经包含数据库、登录权限、团队 dashboard、客户管理、销售看板、跟进记录和 JSON 备份。
+这是一个给销售团队使用的 CRM 网页应用，包含登录权限、团队 dashboard、客户管理、销售看板、跟进记录和 JSON backup。
+
+本地运行默认使用 SQLite；云端设置 `DATABASE_URL` 后会自动使用 PostgreSQL。
 
 ## 本地运行
-
-在当前文件夹执行：
 
 ```powershell
 python server.py
 ```
 
-然后打开：
+打开：
 
 ```text
 http://127.0.0.1:5173
 ```
 
 ## 默认账号
-
-首次启动时会自动建立这些账号：
 
 | 用户名 | 密码 | 角色 | 负责人 |
 | --- | --- | --- | --- |
@@ -27,40 +25,33 @@ http://127.0.0.1:5173
 | jason | sales123 | 销售 | Jason |
 | alicia | sales123 | 销售 | Alicia |
 
-上线前请用管理员登录，在“团队账号”里建立正式账号，并删除不需要的测试账号。
+上线后请建立正式账号，并删除不需要的测试销售账号。
 
-## 权限规则
+## 权限
 
-- 管理员：可以看全部客户、全部销售机会、全部跟进记录、团队 dashboard、导入/重置 backup、管理账号。
-- 销售：只能看到 `owner` 等于自己负责人名称的客户、机会和跟进记录。
-- 销售新增客户时，系统会自动把负责人设成自己的负责人名称。
+- 管理员可查看全部客户、团队 dashboard、backup 和团队账号。
+- 销售只能查看 `owner` 等于自己负责人名称的资料。
+- 销售新增客户时，后端会自动设为自己的负责人名称。
 
-## 资料保存在哪里？
+## 免费云端部署
 
-资料保存在当前文件夹的 `crm.sqlite3` SQLite 数据库里。
+推荐：
 
-页面上也有：
+- Render Free Web Service：运行 CRM
+- Neon Free PostgreSQL：保存客户、账号和跟进资料
 
-- `Export Backup`：下载 JSON 备份
-- `Import Backup`：管理员把 JSON 备份导回数据库
+步骤：
 
-## 云端部署
+1. 在 Neon 创建免费 PostgreSQL project。
+2. 在 Neon Project Dashboard 按 `Connect`。
+3. 复制 pooled connection string。
+4. 在 Render Blueprint 部署时，把 connection string 填入 `DATABASE_URL`。
+5. 在 `CRM_ADMIN_PASSWORD` 输入只有你知道的管理员密码。
+6. Render 自动执行 `pip install -r requirements.txt` 和 `python server.py`。
 
-这个版本已经可以部署到一台云端服务器。最简单的方式是 Render、Railway、Fly.io、VPS 或 NAS。
+首次连接空的 PostgreSQL 数据库时，CRM 会自动建立 tables、示例资料和管理员账号。云端不会自动创建示例销售账号，请由管理员在“团队账号”页面创建。
 
-云端环境变量建议：
+## Backup
 
-```text
-CRM_HOST=0.0.0.0
-PORT=5173
-CRM_DB_PATH=/var/data/crm.sqlite3
-CRM_COOKIE_SECURE=1
-```
-
-启动命令：
-
-```text
-python server.py
-```
-
-注意：如果部署到 Render 并继续使用 SQLite，请一定要开 Persistent Disk，并把 `CRM_DB_PATH` 指向 disk 里面，例如 `/var/data/crm.sqlite3`。Render 官方说明：没有 persistent disk 时，服务本地文件系统是临时的，重启或重新部署后写入的文件会消失。正式团队长期使用时，建议下一阶段换成 PostgreSQL 或 Supabase。
+- `Export Backup`：下载 JSON backup。
+- `Import Backup`：管理员把 JSON backup 导入数据库。

@@ -3,16 +3,17 @@ services:
     name: sales-crm
     runtime: python
     region: singapore
-    buildCommand: ""
+    plan: free
+    buildCommand: pip install -r requirements.txt
     startCommand: python server.py
-    disk:
-      name: crm-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: CRM_HOST
         value: 0.0.0.0
-      - key: CRM_DB_PATH
-        value: /var/data/crm.sqlite3
       - key: CRM_COOKIE_SECURE
         value: "1"
+      - key: DATABASE_URL
+        sync: false
+      - key: CRM_ADMIN_USERNAME
+        value: admin
+      - key: CRM_ADMIN_PASSWORD
+        sync: false
