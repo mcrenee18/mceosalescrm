@@ -455,6 +455,34 @@ textarea {
   font-size: 13px;
 }
 
+.status-settings-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  color: #3d4754;
+  font-size: 13px;
+}
+
+.status-settings-list {
+  display: grid;
+  gap: 8px;
+}
+
+.status-setting-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 38px;
+  gap: 8px;
+  align-items: center;
+}
+
+.status-setting-row input[type="color"] {
+  width: 48px;
+  min-height: 40px;
+  padding: 3px;
+}
+
 .user-list {
   display: grid;
   gap: 10px;
@@ -598,6 +626,9 @@ textarea {
 .deal-card {
   padding: 12px;
   margin-bottom: 10px;
+  border-left-width: 5px;
+  border-left-style: solid;
+  border-left-color: var(--primary);
 }
 
 .deal-card header {
@@ -704,6 +735,46 @@ label {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 18px;
+}
+
+.followup-entry,
+.followup-history {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.compact-heading {
+  margin-bottom: 12px;
+}
+
+.customer-activity-history {
+  max-height: 220px;
+  display: grid;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.history-item {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #f8fafb;
+}
+
+.history-item strong,
+.history-item span {
+  display: block;
+}
+
+.history-item span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.history-item p {
+  margin: 8px 0 0;
 }
 
 .empty-state {

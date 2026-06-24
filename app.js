@@ -3,7 +3,12 @@ let settings = {
   companyName: "Sales CRM",
   tagline: "团队销售工作台",
   monthTarget: 180000,
-  stages: ["广告", "3天免费 Webinar", "Booster", "Closing", "Follow up"]
+  stages: ["广告", "3天免费 Webinar", "Booster", "Closing", "Follow up"],
+  statuses: [
+    { name: "潜在客户", color: "#176b87" },
+    { name: "客户", color: "#16805c" },
+    { name: "暂停", color: "#b42318" }
+  ]
 };
 
 let state = { customers: [], activities: [] };
@@ -130,6 +135,33 @@ function renderSettingsForm() {
   document.querySelector("#settingTagline").value = settings.tagline;
   document.querySelector("#settingMonthTarget").value = settings.monthTarget;
   document.querySelector("#settingStages").value = settings.stages.join("\n");
+  renderStatusSettings();
+}
+
+function renderStatusSettings() {
+  const list = document.querySelector("#statusSettingsList");
+  list.innerHTML = settings.statuses
+    .map(
+      (status, index) => `
+        <div class="status-setting-row">
+          <input type="color" value="${escapeHtml(status.color)}" data-status-color="${index}" aria-label="状态颜色" />
+          <input value="${escapeHtml(status.name)}" data-status-name="${index}" aria-label="状态名称" />
+          <button class="icon-button" type="button" data-remove-status="${index}" aria-label="删除状态">×</button>
+        </div>
+      `
+    )
+    .join("");
+}
+
+function statusSettingsFromForm() {
+  return [...document.querySelectorAll(".status-setting-row")].map((row) => ({
+    name: row.querySelector("[data-status-name]").value.trim(),
+    color: row.querySelector("[data-status-color]").value
+  }));
+}
+
+function statusDefinition(name) {
+  return settings.statuses.find((status) => status.name === name) || settings.statuses[0];
 }
 
 async function loadUsers() {
@@ -257,6 +289,32 @@ function renderSelectOptions() {
   });
   els.sourceFilter.value = sources.includes(currentSource) ? currentSource : "all";
 
+  const statusFilter = els.statusFilter;
+  const currentStatusFilter = statusFilter.value;
+  statusFilter.innerHTML = '<option value="all">全部状态</option>';
+  settings.statuses.forEach((status) => {
+    statusFilter.insertAdjacentHTML(
+      "beforeend",
+      `<option value="${escapeHtml(status.name)}">${escapeHtml(status.name)}</option>`
+    );
+  });
+  statusFilter.value = settings.statuses.some((status) => status.name === currentStatusFilter)
+    ? currentStatusFilter
+    : "all";
+
+  const customerStatus = document.querySelector("#customerStatus");
+  const selectedCustomerStatus = customerStatus.value;
+  customerStatus.innerHTML = "";
+  settings.statuses.forEach((status) => {
+    customerStatus.insertAdjacentHTML(
+      "beforeend",
+      `<option value="${escapeHtml(status.name)}">${escapeHtml(status.name)}</option>`
+    );
+  });
+  customerStatus.value = settings.statuses.some((status) => status.name === selectedCustomerStatus)
+    ? selectedCustomerStatus
+    : settings.statuses[0].name;
+
   const dealStage = document.querySelector("#dealStage");
   dealStage.innerHTML = "";
   settings.stages.forEach((stage) => {
@@ -275,21 +333,17 @@ function renderSelectOptions() {
 
 function renderDashboard() {
   const customers = state.customers;
-  const openDeals = customers.filter((customer) => !["已成交", "已流失"].includes(customer.stage));
-  const wonDeals = customers.filter((customer) => customer.status === "客户");
   const dueToday = customers.filter((customer) => customer.nextFollowUp <= todayISO());
-  const pipelineTotal = openDeals.reduce((sum, customer) => sum + Number(customer.dealValue || 0), 0);
-  const wonTotal = wonDeals.reduce((sum, customer) => sum + Number(customer.dealValue || 0), 0);
+  const currentMonth = todayISO().slice(0, 7);
+  const monthActivities = state.activities.filter((activity) => activity.date.startsWith(currentMonth));
 
   document.querySelector("#metricCustomers").textContent = customers.length;
-  document.querySelector("#metricPipeline").textContent = money(pipelineTotal);
-  document.querySelector("#metricWon").textContent = money(wonTotal);
+  document.querySelector("#metricActivities").textContent = state.activities.length;
+  document.querySelector("#metricMonthActivities").textContent = monthActivities.length;
   document.querySelector("#metricDue").textContent = dueToday.length;
 
-  const progress = Math.min(Math.round((wonTotal / settings.monthTarget) * 100), 100);
-  document.querySelector("#targetProgress").style.width = `${progress}%`;
-  document.querySelector("#targetCopy").textContent =
-    `${progress}% 已完成，距离目标还差 ${money(Math.max(settings.monthTarget - wonTotal, 0))}`;
+  document.querySelector("#targetProgress").style.width = "0%";
+  document.querySelector("#targetCopy").textContent = "管理员设定的本月销售目标";
 
   renderTeamList();
   renderDueList(dueToday);
@@ -308,10 +362,11 @@ function renderTeamList() {
   list.innerHTML = owners
     .map((owner) => {
       const owned = state.customers.filter((customer) => customer.owner === owner);
-      const total = owned.reduce((sum, customer) => sum + Number(customer.dealValue || 0), 0);
       const due = owned.filter((customer) => customer.nextFollowUp <= todayISO()).length;
-      const closing = owned.filter((customer) => customer.stage === "Closing").length;
-      const percent = Math.min(Math.round((total / settings.monthTarget) * 100), 100);
+      const ownerActivities = state.activities.filter((activity) => activity.owner === owner).length;
+      const finalStage = settings.stages[settings.stages.length - 1];
+      const completed = owned.filter((customer) => customer.stage === finalStage).length;
+      const percent = owned.length ? Math.round((completed / owned.length) * 100) : 0;
 
       return `
         <div class="team-row">
@@ -321,7 +376,7 @@ function renderTeamList() {
           </div>
           <div>
             <div class="mini-progress"><span style="width:${percent}%"></span></div>
-            <div class="owner-meta">${money(total)} pipeline · ${closing} 个 Closing</div>
+            <div class="owner-meta">${ownerActivities} 条跟进 · ${completed} 个在 ${escapeHtml(finalStage)}</div>
           </div>
           <strong>${percent}%</strong>
         </div>
@@ -363,25 +418,24 @@ function renderKanban() {
   board.innerHTML = settings.stages
     .map((stage) => {
       const deals = customers.filter((customer) => customer.stage === stage);
-      const total = deals.reduce((sum, customer) => sum + Number(customer.dealValue || 0), 0);
       return `
         <section class="kanban-column">
           <div class="column-heading">
             <span>${escapeHtml(stage)}</span>
-            <span class="count-pill">${deals.length} · ${money(total)}</span>
+            <span class="count-pill">${deals.length}</span>
           </div>
           ${
             deals.length
               ? deals
                   .map(
                     (customer) => `
-                    <article class="deal-card">
+                    <article class="deal-card" style="border-left-color:${escapeHtml(statusDefinition(customer.status).color)}">
                       <header>
                         <strong>${escapeHtml(customer.name)}</strong>
-                        <span class="deal-value">${money(customer.dealValue)}</span>
+                        <span class="status-pill" style="background:${escapeHtml(statusDefinition(customer.status).color)};color:${contrastText(statusDefinition(customer.status).color)}">${escapeHtml(customer.status)}</span>
                       </header>
                       <div class="deal-meta">${escapeHtml(customer.owner)} · ${escapeHtml(customer.source)}</div>
-                      <div class="deal-meta">预计成交 ${escapeHtml(customer.expectedClose)}</div>
+                      <div class="deal-meta">下次跟进 ${escapeHtml(customer.nextFollowUp)}</div>
                       <div class="deal-actions">
                         <button type="button" data-move="${escapeHtml(customer.id)}" data-direction="-1">←</button>
                         <button type="button" data-edit="${escapeHtml(customer.id)}">编辑</button>
@@ -391,7 +445,7 @@ function renderKanban() {
                   `
                   )
                   .join("")
-              : '<div class="empty-state">暂无机会</div>'
+              : '<div class="empty-state">暂无客户</div>'
           }
         </section>
       `;
@@ -410,7 +464,7 @@ function renderCustomerTable() {
 
   table.innerHTML = customers
     .map((customer) => {
-      const statusClass = customer.status === "客户" ? "customer" : customer.status === "暂停" ? "paused" : "";
+      const status = statusDefinition(customer.status);
       return `
         <tr>
           <td>
@@ -419,9 +473,9 @@ function renderCustomerTable() {
           </td>
           <td>${escapeHtml(customer.phone)}</td>
           <td>${escapeHtml(customer.source)}</td>
-          <td><span class="status-pill ${statusClass}">${escapeHtml(customer.status)}</span></td>
+          <td><span class="status-pill" style="background:${escapeHtml(status.color)};color:${contrastText(status.color)}">${escapeHtml(customer.status)}</span></td>
           <td>${escapeHtml(customer.owner)}</td>
-          <td>${money(customer.dealValue)}<div class="customer-meta">${escapeHtml(customer.stage)}</div></td>
+          <td>${escapeHtml(customer.stage)}</td>
           <td>${escapeHtml(customer.nextFollowUp)}</td>
           <td>
             <div class="table-actions">
@@ -524,15 +578,45 @@ function openCustomerForm(id) {
   document.querySelector("#customerPhone").value = customer?.phone || "";
   document.querySelector("#customerEmail").value = customer?.email || "";
   document.querySelector("#customerSource").value = customer?.source || "Facebook 广告";
-  document.querySelector("#customerStatus").value = customer?.status || "潜在客户";
+  document.querySelector("#customerStatus").value = customer?.status || settings.statuses[0].name;
   document.querySelector("#customerOwner").value =
     customer?.owner || (currentUser.role === "sales" ? currentUser.ownerName : getOwners()[0] || "");
-  document.querySelector("#dealValue").value = customer?.dealValue || 0;
   document.querySelector("#dealStage").value = customer?.stage || settings.stages[0];
   document.querySelector("#expectedClose").value = customer?.expectedClose || todayISO();
   document.querySelector("#nextFollowUp").value = customer?.nextFollowUp || todayISO();
-  document.querySelector("#customerNote").value = customer?.note || "";
+  document.querySelector("#customerFollowUpDate").value = todayISO();
+  document.querySelector("#customerFollowUpType").value = "通话";
+  document.querySelector("#customerNote").value = "";
+  renderCustomerHistory(customer?.id);
   els.customerDialog.showModal();
+}
+
+function renderCustomerHistory(customerId) {
+  const section = document.querySelector("#customerHistorySection");
+  const list = document.querySelector("#customerActivityHistory");
+  if (!customerId) {
+    section.hidden = true;
+    list.innerHTML = "";
+    return;
+  }
+
+  section.hidden = false;
+  const activities = state.activities
+    .filter((activity) => activity.customerId === customerId)
+    .sort((a, b) => b.date.localeCompare(a.date));
+  list.innerHTML = activities.length
+    ? activities
+        .map(
+          (activity) => `
+            <article class="history-item">
+              <strong>${escapeHtml(activity.date)} · ${escapeHtml(activity.type)}</strong>
+              <span>${escapeHtml(activity.owner)}</span>
+              <p>${escapeHtml(activity.note)}</p>
+            </article>
+          `
+        )
+        .join("")
+    : '<div class="empty-state">还没有跟进记录。</div>';
 }
 
 function openActivityForm(customerId = "") {
@@ -638,6 +722,7 @@ async function deleteUser(id) {
 }
 
 async function saveSystemSettings() {
+  const statuses = statusSettingsFromForm();
   const nextSettings = {
     companyName: document.querySelector("#settingCompanyName").value.trim(),
     tagline: document.querySelector("#settingTagline").value.trim(),
@@ -646,7 +731,8 @@ async function saveSystemSettings() {
       .querySelector("#settingStages")
       .value.split("\n")
       .map((stage) => stage.trim())
-      .filter(Boolean)
+      .filter(Boolean),
+    statuses
   };
   const payload = await api("/api/settings", {
     method: "POST",
@@ -664,6 +750,14 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function contrastText(hexColor) {
+  const hex = hexColor.replace("#", "");
+  const red = parseInt(hex.slice(0, 2), 16);
+  const green = parseInt(hex.slice(2, 4), 16);
+  const blue = parseInt(hex.slice(4, 6), 16);
+  return red * 0.299 + green * 0.587 + blue * 0.114 > 160 ? "#1d242d" : "#ffffff";
 }
 
 els.loginForm.addEventListener("submit", async (event) => {
@@ -720,6 +814,12 @@ document.querySelector("#seedButton").addEventListener("click", async () => {
   await loadState();
 });
 
+document.querySelector("#addStatusSetting").addEventListener("click", () => {
+  settings.statuses = statusSettingsFromForm();
+  settings.statuses.push({ name: "新状态", color: "#66717f" });
+  renderStatusSettings();
+});
+
 els.userForm.addEventListener("submit", (event) => {
   event.preventDefault();
   createUser().catch((error) => showStatus(error.message, true));
@@ -764,6 +864,18 @@ document.addEventListener("click", (event) => {
   const deleteUserButton = event.target.closest("[data-delete-user]");
   if (deleteUserButton) {
     deleteUser(deleteUserButton.dataset.deleteUser).catch((error) => showStatus(error.message, true));
+    return;
+  }
+
+  const removeStatusButton = event.target.closest("[data-remove-status]");
+  if (removeStatusButton) {
+    settings.statuses = statusSettingsFromForm();
+    if (settings.statuses.length <= 1) {
+      showStatus("至少需要保留一个客户状态。", true);
+      return;
+    }
+    settings.statuses.splice(Number(removeStatusButton.dataset.removeStatus), 1);
+    renderStatusSettings();
   }
 });
 
@@ -777,7 +889,7 @@ els.customerForm.addEventListener("submit", async (event) => {
     source: document.querySelector("#customerSource").value.trim(),
     status: document.querySelector("#customerStatus").value,
     owner: document.querySelector("#customerOwner").value.trim(),
-    dealValue: Number(document.querySelector("#dealValue").value || 0),
+    dealValue: 0,
     stage: document.querySelector("#dealStage").value,
     expectedClose: document.querySelector("#expectedClose").value,
     nextFollowUp: document.querySelector("#nextFollowUp").value,
@@ -785,10 +897,23 @@ els.customerForm.addEventListener("submit", async (event) => {
   };
 
   try {
-    await api("/api/customers", {
+    const saved = await api("/api/customers", {
       method: "POST",
       body: JSON.stringify(customer)
     });
+    const followUpNote = document.querySelector("#customerNote").value.trim();
+    if (followUpNote) {
+      await api("/api/activities", {
+        method: "POST",
+        body: JSON.stringify({
+          customerId: saved.customer.id,
+          type: document.querySelector("#customerFollowUpType").value,
+          date: document.querySelector("#customerFollowUpDate").value || todayISO(),
+          owner: customer.owner,
+          note: followUpNote
+        })
+      });
+    }
     els.customerDialog.close();
     showStatus(`${customer.name} 已保存到数据库。`);
     await loadState();

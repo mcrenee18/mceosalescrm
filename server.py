@@ -32,6 +32,11 @@ DEFAULT_SETTINGS = {
     "tagline": "团队销售工作台",
     "monthTarget": 180000,
     "stages": STAGES,
+    "statuses": [
+        {"name": "潜在客户", "color": "#176b87"},
+        {"name": "客户", "color": "#16805c"},
+        {"name": "暂停", "color": "#b42318"},
+    ],
 }
 
 SEED_USERS = [
@@ -298,6 +303,21 @@ def save_settings(payload: dict) -> dict:
     month_target = float(payload.get("monthTarget") or 0)
     stages = [str(item).strip() for item in payload.get("stages", []) if str(item).strip()]
     stages = list(dict.fromkeys(stages))
+    statuses = []
+    seen_statuses = set()
+    for item in payload.get("statuses", []):
+        name = str(item.get("name") or "").strip()
+        color = str(item.get("color") or "#176b87").strip()
+        if not name or name in seen_statuses:
+            continue
+        if len(color) != 7 or not color.startswith("#"):
+            raise ValueError("Each status color must use #RRGGBB format")
+        try:
+            int(color[1:], 16)
+        except ValueError as exc:
+            raise ValueError("Each status color must use #RRGGBB format") from exc
+        statuses.append({"name": name, "color": color.lower()})
+        seen_statuses.add(name)
 
     if not company_name or not tagline:
         raise ValueError("Company name and tagline are required")
@@ -305,12 +325,15 @@ def save_settings(payload: dict) -> dict:
         raise ValueError("Month target must be greater than zero")
     if not 2 <= len(stages) <= 10:
         raise ValueError("Sales flow needs between 2 and 10 stages")
+    if not 1 <= len(statuses) <= 20:
+        raise ValueError("Customer statuses need between 1 and 20 items")
 
     settings = {
         "companyName": company_name,
         "tagline": tagline,
         "monthTarget": month_target,
         "stages": stages,
+        "statuses": statuses,
     }
     with db() as conn:
         for key, value in settings.items():
@@ -321,12 +344,17 @@ def save_settings(payload: dict) -> dict:
                 """,
                 (key, json.dumps(value, ensure_ascii=False)),
             )
-        customer_rows = conn.execute("SELECT id, stage FROM customers").fetchall()
+        customer_rows = conn.execute("SELECT id, stage, status FROM customers").fetchall()
         for customer in customer_rows:
             if customer["stage"] not in stages:
                 conn.execute(
                     "UPDATE customers SET stage = ?, updated_at = ? WHERE id = ?",
                     (stages[0], now_iso(), customer["id"]),
+                )
+            if customer["status"] not in seen_statuses:
+                conn.execute(
+                    "UPDATE customers SET status = ?, updated_at = ? WHERE id = ?",
+                    (statuses[0]["name"], now_iso(), customer["id"]),
                 )
     return settings
 
@@ -572,9 +600,12 @@ class CRMHandler(SimpleHTTPRequestHandler):
             if path == "/api/customers":
                 user = self.current_user()
                 customer = normalize_customer(read_json(self))
+                allowed_statuses = {item["name"] for item in read_settings()["statuses"]}
                 if user["role"] != "admin":
                     customer["owner"] = user["ownerName"]
                 validate_customer(customer)
+                if customer["status"] not in allowed_statuses:
+                    raise ValueError("Invalid customer status")
                 if not can_access_owner(user, customer["owner"]):
                     raise PermissionError("Forbidden")
                 self.save_customer(customer, user)

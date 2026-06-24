@@ -103,14 +103,14 @@
               <p>包含客户与潜在客户</p>
             </article>
             <article class="metric-card">
-              <span>销售机会金额</span>
-              <strong id="metricPipeline">RM 0</strong>
-              <p>进行中机会总额</p>
+              <span>跟进记录</span>
+              <strong id="metricActivities">0</strong>
+              <p>全部客户互动记录</p>
             </article>
             <article class="metric-card">
-              <span>本月已成交</span>
-              <strong id="metricWon">RM 0</strong>
-              <p>状态为客户</p>
+              <span>本月跟进</span>
+              <strong id="metricMonthActivities">0</strong>
+              <p>本月新增互动记录</p>
             </article>
             <article class="metric-card warning">
               <span>今日待跟进</span>
@@ -186,7 +186,7 @@
                   <th>来源</th>
                   <th>状态</th>
                   <th>负责人</th>
-                  <th>机会金额</th>
+                  <th>销售阶段</th>
                   <th>下次跟进</th>
                   <th>操作</th>
                 </tr>
@@ -289,6 +289,13 @@
                 销售流程阶段（每行一个）
                 <textarea id="settingStages" rows="8" required></textarea>
               </label>
+              <div class="full-field">
+                <div class="status-settings-heading">
+                  <span>客户状态与颜色</span>
+                  <button id="addStatusSetting" class="small-button" type="button">新增状态</button>
+                </div>
+                <div id="statusSettingsList" class="status-settings-list"></div>
+              </div>
               <p class="settings-note">删除仍有客户的旧阶段时，这些客户会移到新流程的第一个阶段。</p>
               <button class="primary-button" type="submit">保存设置</button>
             </form>
@@ -326,19 +333,11 @@
           </label>
           <label>
             状态
-            <select id="customerStatus">
-              <option>潜在客户</option>
-              <option>客户</option>
-              <option>暂停</option>
-            </select>
+            <select id="customerStatus"></select>
           </label>
           <label>
             负责人
             <input id="customerOwner" required />
-          </label>
-          <label>
-            机会金额
-            <input id="dealValue" type="number" min="0" step="100" required />
           </label>
           <label>
             销售阶段
@@ -353,10 +352,38 @@
             <input id="nextFollowUp" type="date" required />
           </label>
         </div>
-        <label class="full-field">
-          备注
-          <textarea id="customerNote" rows="3"></textarea>
-        </label>
+        <section class="followup-entry">
+          <div class="section-heading compact-heading">
+            <div>
+              <p class="eyebrow">Follow Up Note</p>
+              <h3>新增跟进备注</h3>
+            </div>
+          </div>
+          <div class="form-grid">
+            <label>
+              跟进日期
+              <input id="customerFollowUpDate" type="date" />
+            </label>
+            <label>
+              跟进类型
+              <select id="customerFollowUpType">
+                <option>通话</option>
+                <option>微信</option>
+                <option>会议</option>
+                <option>备注</option>
+              </select>
+            </label>
+          </div>
+          <label class="full-field">
+            跟进内容
+            <textarea id="customerNote" rows="3" placeholder="填写本次沟通、客户回应和下一步行动"></textarea>
+          </label>
+        </section>
+        <section id="customerHistorySection" class="followup-history">
+          <p class="eyebrow">History</p>
+          <h3>跟进记录</h3>
+          <div id="customerActivityHistory" class="customer-activity-history"></div>
+        </section>
         <div class="modal-actions">
           <button class="ghost-button" type="button" data-close-dialog>取消</button>
           <button class="primary-button" type="submit">保存</button>
