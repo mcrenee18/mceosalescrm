@@ -103,14 +103,14 @@
               <p>包含客户与潜在客户</p>
             </article>
             <article class="metric-card">
-              <span>跟进记录</span>
-              <strong id="metricActivities">0</strong>
-              <p>全部客户互动记录</p>
+              <span>本月成交金额</span>
+              <strong id="metricMonthlySales">RM 0</strong>
+              <p>只计算本月已成交</p>
             </article>
             <article class="metric-card">
-              <span>本月跟进</span>
-              <strong id="metricMonthActivities">0</strong>
-              <p>本月新增互动记录</p>
+              <span>本月已成交</span>
+              <strong id="metricMonthlyWon">0</strong>
+              <p>计入成交的客户数</p>
             </article>
             <article class="metric-card warning">
               <span>今日待跟进</span>
@@ -148,10 +148,6 @@
 
         <section id="pipelineView" class="view">
           <div class="pipeline-toolbar">
-            <div>
-              <p class="eyebrow">Sales Flow</p>
-              <h3 id="pipelineFlowTitle">广告 → 3天免费 Webinar → Booster → Closing → Follow up</h3>
-            </div>
             <select id="stageOwnerFilter" aria-label="看板负责人筛选">
               <option value="all">全部负责人</option>
             </select>
@@ -205,10 +201,6 @@
             <div class="filter-row">
               <select id="activityTypeFilter" aria-label="跟进类型筛选">
                 <option value="all">全部类型</option>
-                <option value="通话">通话</option>
-                <option value="微信">微信</option>
-                <option value="会议">会议</option>
-                <option value="备注">备注</option>
               </select>
             </div>
           </div>
@@ -296,6 +288,10 @@
                 </div>
                 <div id="statusSettingsList" class="status-settings-list"></div>
               </div>
+              <label class="full-field">
+                跟进类型（每行一个）
+                <textarea id="settingActivityTypes" rows="6" required></textarea>
+              </label>
               <p class="settings-note">删除仍有客户的旧阶段时，这些客户会移到新流程的第一个阶段。</p>
               <button class="primary-button" type="submit">保存设置</button>
             </form>
@@ -343,6 +339,10 @@
             销售阶段
             <select id="dealStage"></select>
           </label>
+          <label id="dealValueField" hidden>
+            销售金额（RM）
+            <input id="dealValue" type="number" min="1" step="1" />
+          </label>
           <label>
             预计成交日期
             <input id="expectedClose" type="date" required />
@@ -366,12 +366,7 @@
             </label>
             <label>
               跟进类型
-              <select id="customerFollowUpType">
-                <option>通话</option>
-                <option>微信</option>
-                <option>会议</option>
-                <option>备注</option>
-              </select>
+              <select id="customerFollowUpType"></select>
             </label>
           </div>
           <label class="full-field">
@@ -407,12 +402,7 @@
           </label>
           <label>
             类型
-            <select id="activityType">
-              <option>通话</option>
-              <option>微信</option>
-              <option>会议</option>
-              <option>备注</option>
-            </select>
+            <select id="activityType"></select>
           </label>
           <label>
             日期

@@ -5,16 +5,18 @@ let settings = {
   monthTarget: 180000,
   stages: ["广告", "3天免费 Webinar", "Booster", "Closing", "Follow up"],
   statuses: [
-    { name: "潜在客户", color: "#176b87" },
-    { name: "客户", color: "#16805c" },
-    { name: "暂停", color: "#b42318" }
-  ]
+    { name: "潜在客户", color: "#176b87", isWon: false },
+    { name: "已成交", color: "#16805c", isWon: true },
+    { name: "暂停", color: "#b42318", isWon: false }
+  ],
+  activityTypes: ["通话", "微信", "会议", "备注"]
 };
 
 let state = { customers: [], activities: [] };
 let currentUser = null;
 let users = [];
 let activeView = "dashboard";
+let draggedStatusIndex = null;
 
 const els = {
   loginShell: document.querySelector("#loginShell"),
@@ -123,7 +125,6 @@ function applySettings() {
     node.textContent = settings.tagline;
   });
   document.querySelector("#monthTarget").textContent = money(settings.monthTarget);
-  document.querySelector("#pipelineFlowTitle").textContent = settings.stages.join(" → ");
   document.querySelector("#kanbanBoard").style.gridTemplateColumns =
     `repeat(${settings.stages.length}, minmax(220px, 1fr))`;
   renderSettingsForm();
@@ -135,6 +136,7 @@ function renderSettingsForm() {
   document.querySelector("#settingTagline").value = settings.tagline;
   document.querySelector("#settingMonthTarget").value = settings.monthTarget;
   document.querySelector("#settingStages").value = settings.stages.join("\n");
+  document.querySelector("#settingActivityTypes").value = settings.activityTypes.join("\n");
   renderStatusSettings();
 }
 
@@ -143,9 +145,14 @@ function renderStatusSettings() {
   list.innerHTML = settings.statuses
     .map(
       (status, index) => `
-        <div class="status-setting-row">
+        <div class="status-setting-row" draggable="true" data-status-index="${index}">
+          <button class="drag-handle" type="button" aria-label="拖动调整顺序" title="拖动调整顺序">☰</button>
           <input type="color" value="${escapeHtml(status.color)}" data-status-color="${index}" aria-label="状态颜色" />
           <input value="${escapeHtml(status.name)}" data-status-name="${index}" aria-label="状态名称" />
+          <label class="won-toggle">
+            <input type="checkbox" data-status-won="${index}" ${status.isWon ? "checked" : ""} />
+            计入成交
+          </label>
           <button class="icon-button" type="button" data-remove-status="${index}" aria-label="删除状态">×</button>
         </div>
       `
@@ -156,12 +163,17 @@ function renderStatusSettings() {
 function statusSettingsFromForm() {
   return [...document.querySelectorAll(".status-setting-row")].map((row) => ({
     name: row.querySelector("[data-status-name]").value.trim(),
-    color: row.querySelector("[data-status-color]").value
+    color: row.querySelector("[data-status-color]").value,
+    isWon: row.querySelector("[data-status-won]").checked
   }));
 }
 
 function statusDefinition(name) {
   return settings.statuses.find((status) => status.name === name) || settings.statuses[0];
+}
+
+function isWonStatus(name) {
+  return Boolean(statusDefinition(name)?.isWon);
 }
 
 async function loadUsers() {
@@ -315,6 +327,28 @@ function renderSelectOptions() {
     ? selectedCustomerStatus
     : settings.statuses[0].name;
 
+  [document.querySelector("#activityType"), document.querySelector("#customerFollowUpType")].forEach((select) => {
+    const current = select.value;
+    select.innerHTML = "";
+    settings.activityTypes.forEach((type) => {
+      select.insertAdjacentHTML("beforeend", `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`);
+    });
+    select.value = settings.activityTypes.includes(current) ? current : settings.activityTypes[0];
+  });
+
+  const activityTypeFilter = els.activityTypeFilter;
+  const currentActivityFilter = activityTypeFilter.value;
+  activityTypeFilter.innerHTML = '<option value="all">全部类型</option>';
+  settings.activityTypes.forEach((type) => {
+    activityTypeFilter.insertAdjacentHTML(
+      "beforeend",
+      `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`
+    );
+  });
+  activityTypeFilter.value = settings.activityTypes.includes(currentActivityFilter)
+    ? currentActivityFilter
+    : "all";
+
   const dealStage = document.querySelector("#dealStage");
   dealStage.innerHTML = "";
   settings.stages.forEach((stage) => {
@@ -335,15 +369,20 @@ function renderDashboard() {
   const customers = state.customers;
   const dueToday = customers.filter((customer) => customer.nextFollowUp <= todayISO());
   const currentMonth = todayISO().slice(0, 7);
-  const monthActivities = state.activities.filter((activity) => activity.date.startsWith(currentMonth));
+  const monthlyWon = customers.filter(
+    (customer) => isWonStatus(customer.status) && customer.expectedClose.startsWith(currentMonth)
+  );
+  const monthlySales = monthlyWon.reduce((sum, customer) => sum + Number(customer.dealValue || 0), 0);
 
   document.querySelector("#metricCustomers").textContent = customers.length;
-  document.querySelector("#metricActivities").textContent = state.activities.length;
-  document.querySelector("#metricMonthActivities").textContent = monthActivities.length;
+  document.querySelector("#metricMonthlySales").textContent = money(monthlySales);
+  document.querySelector("#metricMonthlyWon").textContent = monthlyWon.length;
   document.querySelector("#metricDue").textContent = dueToday.length;
 
-  document.querySelector("#targetProgress").style.width = "0%";
-  document.querySelector("#targetCopy").textContent = "管理员设定的本月销售目标";
+  const progress = Math.min(Math.round((monthlySales / settings.monthTarget) * 100), 100);
+  document.querySelector("#targetProgress").style.width = `${progress}%`;
+  document.querySelector("#targetCopy").textContent =
+    `${progress}% 已完成，距离目标还差 ${money(Math.max(settings.monthTarget - monthlySales, 0))}`;
 
   renderTeamList();
   renderDueList(dueToday);
@@ -364,9 +403,11 @@ function renderTeamList() {
       const owned = state.customers.filter((customer) => customer.owner === owner);
       const due = owned.filter((customer) => customer.nextFollowUp <= todayISO()).length;
       const ownerActivities = state.activities.filter((activity) => activity.owner === owner).length;
-      const finalStage = settings.stages[settings.stages.length - 1];
-      const completed = owned.filter((customer) => customer.stage === finalStage).length;
-      const percent = owned.length ? Math.round((completed / owned.length) * 100) : 0;
+      const ownerWon = owned.filter(
+        (customer) => isWonStatus(customer.status) && customer.expectedClose.startsWith(todayISO().slice(0, 7))
+      );
+      const ownerSales = ownerWon.reduce((sum, customer) => sum + Number(customer.dealValue || 0), 0);
+      const percent = Math.min(Math.round((ownerSales / settings.monthTarget) * 100), 100);
 
       return `
         <div class="team-row">
@@ -376,7 +417,7 @@ function renderTeamList() {
           </div>
           <div>
             <div class="mini-progress"><span style="width:${percent}%"></span></div>
-            <div class="owner-meta">${ownerActivities} 条跟进 · ${completed} 个在 ${escapeHtml(finalStage)}</div>
+            <div class="owner-meta">${money(ownerSales)} 本月成交 · ${ownerActivities} 条跟进</div>
           </div>
           <strong>${percent}%</strong>
         </div>
@@ -432,14 +473,19 @@ function renderKanban() {
                     <article class="deal-card" style="border-left-color:${escapeHtml(statusDefinition(customer.status).color)}">
                       <header>
                         <strong>${escapeHtml(customer.name)}</strong>
-                        <span class="status-pill" style="background:${escapeHtml(statusDefinition(customer.status).color)};color:${contrastText(statusDefinition(customer.status).color)}">${escapeHtml(customer.status)}</span>
+                        <div class="deal-card-status">
+                          ${isWonStatus(customer.status) ? `<span class="deal-value">${money(customer.dealValue)}</span>` : ""}
+                          <span class="status-pill" style="background:${escapeHtml(statusDefinition(customer.status).color)};color:${contrastText(statusDefinition(customer.status).color)}">${escapeHtml(customer.status)}</span>
+                        </div>
                       </header>
-                      <div class="deal-meta">${escapeHtml(customer.owner)} · ${escapeHtml(customer.source)}</div>
-                      <div class="deal-meta">下次跟进 ${escapeHtml(customer.nextFollowUp)}</div>
+                      <dl class="deal-details">
+                        <div><dt>负责人</dt><dd>${escapeHtml(customer.owner)}</dd></div>
+                        <div><dt>状态</dt><dd>${escapeHtml(customer.status)}</dd></div>
+                        <div><dt>销售阶段</dt><dd>${escapeHtml(customer.stage)}</dd></div>
+                        <div><dt>下次跟进</dt><dd>${escapeHtml(customer.nextFollowUp)}</dd></div>
+                      </dl>
                       <div class="deal-actions">
-                        <button type="button" data-move="${escapeHtml(customer.id)}" data-direction="-1">←</button>
                         <button type="button" data-edit="${escapeHtml(customer.id)}">编辑</button>
-                        <button type="button" data-move="${escapeHtml(customer.id)}" data-direction="1">→</button>
                       </div>
                     </article>
                   `
@@ -582,11 +628,13 @@ function openCustomerForm(id) {
   document.querySelector("#customerOwner").value =
     customer?.owner || (currentUser.role === "sales" ? currentUser.ownerName : getOwners()[0] || "");
   document.querySelector("#dealStage").value = customer?.stage || settings.stages[0];
+  document.querySelector("#dealValue").value = customer?.dealValue || 0;
   document.querySelector("#expectedClose").value = customer?.expectedClose || todayISO();
   document.querySelector("#nextFollowUp").value = customer?.nextFollowUp || todayISO();
   document.querySelector("#customerFollowUpDate").value = todayISO();
-  document.querySelector("#customerFollowUpType").value = "通话";
+  document.querySelector("#customerFollowUpType").value = settings.activityTypes[0];
   document.querySelector("#customerNote").value = "";
+  updateDealValueVisibility();
   renderCustomerHistory(customer?.id);
   els.customerDialog.showModal();
 }
@@ -621,7 +669,7 @@ function renderCustomerHistory(customerId) {
 
 function openActivityForm(customerId = "") {
   document.querySelector("#activityCustomer").value = customerId || state.customers[0]?.id || "";
-  document.querySelector("#activityType").value = "通话";
+  document.querySelector("#activityType").value = settings.activityTypes[0];
   document.querySelector("#activityDate").value = todayISO();
   document.querySelector("#activityOwner").value =
     currentUser.role === "sales" ? currentUser.ownerName : getCustomer(customerId)?.owner || getOwners()[0] || "";
@@ -630,16 +678,13 @@ function openActivityForm(customerId = "") {
   els.activityDialog.showModal();
 }
 
-async function moveStage(id, direction) {
-  const customer = getCustomer(id);
-  if (!customer) return;
-  const currentIndex = settings.stages.indexOf(customer.stage);
-  const nextIndex = Math.min(Math.max(currentIndex + Number(direction), 0), settings.stages.length - 1);
-  await api(`/api/customers/${encodeURIComponent(id)}/stage`, {
-    method: "PATCH",
-    body: JSON.stringify({ stage: settings.stages[nextIndex] })
-  });
-  await loadState();
+function updateDealValueVisibility() {
+  const won = isWonStatus(document.querySelector("#customerStatus").value);
+  const field = document.querySelector("#dealValueField");
+  const input = document.querySelector("#dealValue");
+  field.hidden = !won;
+  input.required = won;
+  if (!won) input.value = 0;
 }
 
 async function deleteCustomer(id) {
@@ -732,7 +777,12 @@ async function saveSystemSettings() {
       .value.split("\n")
       .map((stage) => stage.trim())
       .filter(Boolean),
-    statuses
+    statuses,
+    activityTypes: document
+      .querySelector("#settingActivityTypes")
+      .value.split("\n")
+      .map((type) => type.trim())
+      .filter(Boolean)
   };
   const payload = await api("/api/settings", {
     method: "POST",
@@ -799,6 +849,8 @@ els.navItems.forEach((item) => {
   els.activityTypeFilter
 ].forEach((control) => control.addEventListener("input", render));
 
+document.querySelector("#customerStatus").addEventListener("change", updateDealValueVisibility);
+
 document.querySelector("#openCustomerForm").addEventListener("click", () => openCustomerForm());
 document.querySelector("#openActivityForm").addEventListener("click", () => openActivityForm());
 document.querySelector("#exportBackup").addEventListener("click", () => exportBackup().catch((error) => showStatus(error.message, true)));
@@ -816,8 +868,47 @@ document.querySelector("#seedButton").addEventListener("click", async () => {
 
 document.querySelector("#addStatusSetting").addEventListener("click", () => {
   settings.statuses = statusSettingsFromForm();
-  settings.statuses.push({ name: "新状态", color: "#66717f" });
+  settings.statuses.push({ name: "新状态", color: "#66717f", isWon: false });
   renderStatusSettings();
+});
+
+document.querySelector("#statusSettingsList").addEventListener("dragstart", (event) => {
+  const row = event.target.closest("[data-status-index]");
+  if (!row) return;
+  settings.statuses = statusSettingsFromForm();
+  draggedStatusIndex = Number(row.dataset.statusIndex);
+  row.classList.add("dragging");
+  event.dataTransfer.effectAllowed = "move";
+});
+
+document.querySelector("#statusSettingsList").addEventListener("dragover", (event) => {
+  const row = event.target.closest("[data-status-index]");
+  if (!row || draggedStatusIndex === null) return;
+  event.preventDefault();
+  row.classList.add("drag-over");
+  event.dataTransfer.dropEffect = "move";
+});
+
+document.querySelector("#statusSettingsList").addEventListener("dragleave", (event) => {
+  event.target.closest("[data-status-index]")?.classList.remove("drag-over");
+});
+
+document.querySelector("#statusSettingsList").addEventListener("drop", (event) => {
+  const row = event.target.closest("[data-status-index]");
+  if (!row || draggedStatusIndex === null) return;
+  event.preventDefault();
+  const targetIndex = Number(row.dataset.statusIndex);
+  const [moved] = settings.statuses.splice(draggedStatusIndex, 1);
+  settings.statuses.splice(targetIndex, 0, moved);
+  draggedStatusIndex = null;
+  renderStatusSettings();
+});
+
+document.querySelector("#statusSettingsList").addEventListener("dragend", () => {
+  draggedStatusIndex = null;
+  document.querySelectorAll(".status-setting-row").forEach((row) => {
+    row.classList.remove("dragging", "drag-over");
+  });
 });
 
 els.userForm.addEventListener("submit", (event) => {
@@ -855,12 +946,6 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  const moveButton = event.target.closest("[data-move]");
-  if (moveButton) {
-    moveStage(moveButton.dataset.move, moveButton.dataset.direction).catch((error) => showStatus(error.message, true));
-    return;
-  }
-
   const deleteUserButton = event.target.closest("[data-delete-user]");
   if (deleteUserButton) {
     deleteUser(deleteUserButton.dataset.deleteUser).catch((error) => showStatus(error.message, true));
@@ -889,7 +974,9 @@ els.customerForm.addEventListener("submit", async (event) => {
     source: document.querySelector("#customerSource").value.trim(),
     status: document.querySelector("#customerStatus").value,
     owner: document.querySelector("#customerOwner").value.trim(),
-    dealValue: 0,
+    dealValue: isWonStatus(document.querySelector("#customerStatus").value)
+      ? Number(document.querySelector("#dealValue").value || 0)
+      : 0,
     stage: document.querySelector("#dealStage").value,
     expectedClose: document.querySelector("#expectedClose").value,
     nextFollowUp: document.querySelector("#nextFollowUp").value,
