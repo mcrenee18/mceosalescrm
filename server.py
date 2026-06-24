@@ -250,28 +250,46 @@ def init_db() -> None:
         )
         if conn.execute("SELECT COUNT(*) AS count FROM customers").fetchone()["count"] == 0:
             replace_all(conn, SEED_DATA)
-        if conn.execute("SELECT COUNT(*) AS count FROM users").fetchone()["count"] == 0:
-            for user in initial_users():
+        if DATABASE_URL:
+            sync_cloud_admin(conn)
+        elif conn.execute("SELECT COUNT(*) AS count FROM users").fetchone()["count"] == 0:
+            for user in SEED_USERS:
                 create_user(conn, user)
 
 
-def initial_users() -> list[dict]:
-    if not DATABASE_URL:
-        return SEED_USERS
-
+def sync_cloud_admin(conn) -> None:
+    admin_username = os.environ.get("CRM_ADMIN_USERNAME", "admin").strip().lower() or "admin"
     admin_password = os.environ.get("CRM_ADMIN_PASSWORD", "").strip()
     if not admin_password:
         raise RuntimeError("CRM_ADMIN_PASSWORD is required for cloud deployment")
 
-    return [
-        {
-            "username": os.environ.get("CRM_ADMIN_USERNAME", "admin").strip().lower() or "admin",
-            "password": admin_password,
-            "displayName": "Admin",
-            "role": "admin",
-            "ownerName": "",
-        }
-    ]
+    row = conn.execute("SELECT * FROM users WHERE username = ?", (admin_username,)).fetchone()
+    if not row:
+        create_user(
+            conn,
+            {
+                "username": admin_username,
+                "password": admin_password,
+                "displayName": "Admin",
+                "role": "admin",
+                "ownerName": "",
+            },
+        )
+        return
+
+    if verify_password(admin_password, row["password_salt"], row["password_hash"]):
+        return
+
+    salt, password_hash = hash_password(admin_password)
+    conn.execute(
+        """
+        UPDATE users
+        SET password_salt = ?, password_hash = ?, role = 'admin'
+        WHERE id = ?
+        """,
+        (salt, password_hash, row["id"]),
+    )
+    conn.execute("DELETE FROM sessions WHERE user_id = ?", (row["id"],))
 
 
 def create_user(conn: sqlite3.Connection, raw: dict) -> dict:

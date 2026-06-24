@@ -10,7 +10,10 @@
     <section id="loginShell" class="login-shell">
       <form id="loginForm" class="login-card">
         <div class="brand-block login-brand">
-          <div class="brand-mark">CRM</div>
+          <div class="brand-mark logo-frame">
+            <img class="brand-logo" src="./logo.png" alt="公司 Logo" onload="this.nextElementSibling.hidden=true" onerror="this.hidden=true" />
+            <span>CRM</span>
+          </div>
           <div>
             <h1>Sales CRM</h1>
             <p>团队销售工作台</p>
@@ -30,14 +33,17 @@
         </label>
         <p id="loginError" class="login-error" hidden></p>
         <button class="primary-button" type="submit">登录</button>
-        <p class="login-hint">默认管理员：admin / admin123。上线前请更改密码。</p>
+        <p class="login-hint">管理员用户名默认为 admin，密码使用 Render 的 CRM_ADMIN_PASSWORD。</p>
       </form>
     </section>
 
     <div id="appShell" class="app-shell" hidden>
       <aside class="sidebar">
         <div class="brand-block">
-          <div class="brand-mark">CRM</div>
+          <div class="brand-mark logo-frame">
+            <img class="brand-logo" src="./logo.png" alt="公司 Logo" onload="this.nextElementSibling.hidden=true" onerror="this.hidden=true" />
+            <span>CRM</span>
+          </div>
           <div>
             <h1>Sales CRM</h1>
             <p>团队销售工作台</p>

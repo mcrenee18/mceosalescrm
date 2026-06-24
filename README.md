@@ -27,6 +27,18 @@ http://127.0.0.1:5173
 
 上线后请建立正式账号，并删除不需要的测试销售账号。
 
+云端管理员密码来自 Render 的 `CRM_ADMIN_PASSWORD`。修改这个环境变量并重新部署后，admin 密码会自动同步更新。
+
+## 公司 Logo
+
+把公司 Logo 命名为：
+
+```text
+logo.png
+```
+
+上传到 GitHub repository 根目录，也就是和 `index.html` 放在同一层。Render 重新部署后，登录页和左侧导航会自动显示这个 Logo。
+
 ## 权限
 
 - 管理员可查看全部客户、团队 dashboard、backup 和团队账号。
