@@ -223,10 +223,10 @@
                   <h3>新增团队账号</h3>
                 </div>
               </div>
-              <form id="userForm" class="account-form">
+              <form id="userForm" class="account-form" autocomplete="off">
                 <label>
                   用户名
-                  <input id="newUsername" required />
+                  <input id="newUsername" autocomplete="off" placeholder="例如 mary" required />
                 </label>
                 <label>
                   显示名称
@@ -245,7 +245,7 @@
                 </label>
                 <label>
                   临时密码
-                  <input id="newPassword" type="password" required />
+                  <input id="newPassword" type="password" autocomplete="new-password" required />
                 </label>
                 <button class="primary-button" type="submit">创建账号</button>
               </form>

@@ -582,6 +582,9 @@ async function createUser() {
     ownerName: document.querySelector("#newOwnerName").value.trim(),
     password: document.querySelector("#newPassword").value
   };
+  if (users.some((user) => user.username.toLowerCase() === payload.username.toLowerCase())) {
+    throw new Error(`用户名 ${payload.username} 已经存在，请使用另一个用户名。`);
+  }
   if (payload.role === "sales" && !payload.ownerName) payload.ownerName = payload.displayName;
   await api("/api/users", {
     method: "POST",
