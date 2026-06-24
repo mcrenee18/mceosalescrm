@@ -248,9 +248,9 @@ def init_db() -> None:
             );
             """
         )
-        if conn.execute("SELECT COUNT(*) FROM customers").fetchone()[0] == 0:
+        if conn.execute("SELECT COUNT(*) AS count FROM customers").fetchone()["count"] == 0:
             replace_all(conn, SEED_DATA)
-        if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
+        if conn.execute("SELECT COUNT(*) AS count FROM users").fetchone()["count"] == 0:
             for user in initial_users():
                 create_user(conn, user)
 
