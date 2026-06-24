@@ -634,6 +634,11 @@ function openCustomerForm(id) {
   document.querySelector("#customerFollowUpDate").value = todayISO();
   document.querySelector("#customerFollowUpType").value = settings.activityTypes[0];
   document.querySelector("#customerNote").value = "";
+  document.querySelector("#customerFormError").hidden = true;
+  document.querySelector("#customerFormError").textContent = "";
+  const saveButton = document.querySelector("#saveCustomerButton");
+  saveButton.disabled = false;
+  saveButton.textContent = "保存";
   updateDealValueVisibility();
   renderCustomerHistory(customer?.id);
   els.customerDialog.showModal();
@@ -966,6 +971,11 @@ document.addEventListener("click", (event) => {
 
 els.customerForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const formError = document.querySelector("#customerFormError");
+  const saveButton = document.querySelector("#saveCustomerButton");
+  formError.hidden = true;
+  saveButton.disabled = true;
+  saveButton.textContent = "保存中...";
   const customer = {
     id: document.querySelector("#customerId").value,
     name: document.querySelector("#customerName").value.trim(),
@@ -989,23 +999,33 @@ els.customerForm.addEventListener("submit", async (event) => {
       body: JSON.stringify(customer)
     });
     const followUpNote = document.querySelector("#customerNote").value.trim();
-    if (followUpNote) {
-      await api("/api/activities", {
-        method: "POST",
-        body: JSON.stringify({
-          customerId: saved.customer.id,
-          type: document.querySelector("#customerFollowUpType").value,
-          date: document.querySelector("#customerFollowUpDate").value || todayISO(),
-          owner: customer.owner,
-          note: followUpNote
-        })
-      });
-    }
     els.customerDialog.close();
-    showStatus(`${customer.name} 已保存到数据库。`);
     await loadState();
+    showStatus(`${customer.name} 已保存。`);
+
+    if (followUpNote) {
+      try {
+        await api("/api/activities", {
+          method: "POST",
+          body: JSON.stringify({
+            customerId: saved.customer.id,
+            type: document.querySelector("#customerFollowUpType").value,
+            date: document.querySelector("#customerFollowUpDate").value || todayISO(),
+            owner: customer.owner,
+            note: followUpNote
+          })
+        });
+        await loadState();
+        showStatus(`${customer.name} 和跟进记录已保存。`);
+      } catch (activityError) {
+        showStatus(`客户已保存，但跟进记录失败：${activityError.message}`, true);
+      }
+    }
   } catch (error) {
-    showStatus(error.message, true);
+    formError.textContent = `保存失败：${error.message}`;
+    formError.hidden = false;
+    saveButton.disabled = false;
+    saveButton.textContent = "重新保存";
   }
 });
 
