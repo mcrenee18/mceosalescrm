@@ -380,9 +380,11 @@ function renderDashboard() {
   document.querySelector("#metricDue").textContent = dueToday.length;
 
   const progress = Math.min(Math.round((monthlySales / settings.monthTarget) * 100), 100);
+  const remaining = Math.max(settings.monthTarget - monthlySales, 0);
   document.querySelector("#targetProgress").style.width = `${progress}%`;
+  document.querySelector("#monthTarget").textContent = money(remaining);
   document.querySelector("#targetCopy").textContent =
-    `${progress}% 已完成，距离目标还差 ${money(Math.max(settings.monthTarget - monthlySales, 0))}`;
+    `目标 ${money(settings.monthTarget)} · 已完成 ${money(monthlySales)}（${progress}%）`;
 
   renderTeamList();
   renderDueList(dueToday);
@@ -473,16 +475,10 @@ function renderKanban() {
                     <article class="deal-card" style="border-left-color:${escapeHtml(statusDefinition(customer.status).color)}">
                       <header>
                         <strong>${escapeHtml(customer.name)}</strong>
-                        <div class="deal-card-status">
-                          ${isWonStatus(customer.status) ? `<span class="deal-value">${money(customer.dealValue)}</span>` : ""}
-                          <span class="status-pill" style="background:${escapeHtml(statusDefinition(customer.status).color)};color:${contrastText(statusDefinition(customer.status).color)}">${escapeHtml(customer.status)}</span>
-                        </div>
                       </header>
                       <dl class="deal-details">
                         <div><dt>负责人</dt><dd>${escapeHtml(customer.owner)}</dd></div>
                         <div><dt>状态</dt><dd>${escapeHtml(customer.status)}</dd></div>
-                        <div><dt>Booster MDS</dt><dd>${escapeHtml(customer.stage)}</dd></div>
-                        <div><dt>下次跟进</dt><dd>${escapeHtml(customer.nextFollowUp)}</dd></div>
                       </dl>
                       <div class="deal-actions">
                         <button type="button" data-edit="${escapeHtml(customer.id)}">编辑</button>

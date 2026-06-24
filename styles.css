@@ -673,8 +673,8 @@ textarea {
 }
 
 .deal-card {
-  padding: 12px;
-  margin-bottom: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
   border-left-width: 5px;
   border-left-style: solid;
   border-left-color: var(--primary);
@@ -700,8 +700,8 @@ textarea {
 
 .deal-details {
   display: grid;
-  gap: 6px;
-  margin: 12px 0 0;
+  gap: 4px;
+  margin: 8px 0 0;
 }
 
 .deal-details div {
@@ -729,7 +729,7 @@ textarea {
 .table-actions {
   display: flex;
   gap: 6px;
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .deal-actions button,
