@@ -33,10 +33,12 @@ DEFAULT_SETTINGS = {
     "monthTarget": 180000,
     "stages": STAGES,
     "statuses": [
-        {"name": "潜在客户", "color": "#176b87"},
-        {"name": "客户", "color": "#16805c"},
-        {"name": "暂停", "color": "#b42318"},
+        {"name": "潜在客户", "color": "#176b87", "isWon": False},
+        {"name": "客户", "color": "#16805c", "isWon": False},
+        {"name": "已成交", "color": "#16805c", "isWon": True},
+        {"name": "暂停", "color": "#b42318", "isWon": False},
     ],
+    "activityTypes": ["通话", "微信", "会议", "备注"],
 }
 
 SEED_USERS = [
@@ -294,6 +296,18 @@ def read_settings(conn=None) -> dict:
     settings = dict(DEFAULT_SETTINGS)
     for row in rows:
         settings[row["key"]] = json.loads(row["value"])
+    settings["statuses"] = [
+        {
+            "name": str(item.get("name") or "").strip(),
+            "color": str(item.get("color") or "#176b87"),
+            "isWon": bool(item.get("isWon", item.get("name") == "已成交")),
+        }
+        for item in settings.get("statuses", [])
+        if str(item.get("name") or "").strip()
+    ]
+    settings["activityTypes"] = [
+        str(item).strip() for item in settings.get("activityTypes", []) if str(item).strip()
+    ] or list(DEFAULT_SETTINGS["activityTypes"])
     return settings
 
 
@@ -316,8 +330,15 @@ def save_settings(payload: dict) -> dict:
             int(color[1:], 16)
         except ValueError as exc:
             raise ValueError("Each status color must use #RRGGBB format") from exc
-        statuses.append({"name": name, "color": color.lower()})
+        statuses.append({"name": name, "color": color.lower(), "isWon": bool(item.get("isWon"))})
         seen_statuses.add(name)
+    activity_types = list(
+        dict.fromkeys(
+            str(item).strip()
+            for item in payload.get("activityTypes", [])
+            if str(item).strip()
+        )
+    )
 
     if not company_name or not tagline:
         raise ValueError("Company name and tagline are required")
@@ -327,6 +348,8 @@ def save_settings(payload: dict) -> dict:
         raise ValueError("Sales flow needs between 2 and 10 stages")
     if not 1 <= len(statuses) <= 20:
         raise ValueError("Customer statuses need between 1 and 20 items")
+    if not 1 <= len(activity_types) <= 20:
+        raise ValueError("Follow-up types need between 1 and 20 items")
 
     settings = {
         "companyName": company_name,
@@ -334,6 +357,7 @@ def save_settings(payload: dict) -> dict:
         "monthTarget": month_target,
         "stages": stages,
         "statuses": statuses,
+        "activityTypes": activity_types,
     }
     with db() as conn:
         for key, value in settings.items():
@@ -600,12 +624,17 @@ class CRMHandler(SimpleHTTPRequestHandler):
             if path == "/api/customers":
                 user = self.current_user()
                 customer = normalize_customer(read_json(self))
-                allowed_statuses = {item["name"] for item in read_settings()["statuses"]}
+                current_settings = read_settings()
+                status_definitions = {item["name"]: item for item in current_settings["statuses"]}
                 if user["role"] != "admin":
                     customer["owner"] = user["ownerName"]
                 validate_customer(customer)
-                if customer["status"] not in allowed_statuses:
+                if customer["status"] not in status_definitions:
                     raise ValueError("Invalid customer status")
+                if not status_definitions[customer["status"]]["isWon"]:
+                    customer["dealValue"] = 0
+                elif customer["dealValue"] <= 0:
+                    raise ValueError("Sales amount is required for a won customer")
                 if not can_access_owner(user, customer["owner"]):
                     raise PermissionError("Forbidden")
                 self.save_customer(customer, user)
@@ -614,6 +643,8 @@ class CRMHandler(SimpleHTTPRequestHandler):
             if path == "/api/activities":
                 user = self.current_user()
                 activity = normalize_activity(read_json(self))
+                if activity["type"] not in read_settings()["activityTypes"]:
+                    raise ValueError("Invalid follow-up type")
                 if user["role"] != "admin":
                     activity["owner"] = user["ownerName"]
                 validate_activity(activity)
