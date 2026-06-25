@@ -413,12 +413,16 @@ function renderDashboard() {
   document.querySelector("#metricMonthlyWon").textContent = monthlyWon.length;
   document.querySelector("#metricDue").textContent = dueToday.length;
 
-  const progress = Math.min(Math.round((monthlySales / settings.monthTarget) * 100), 100);
-  const remaining = Math.max(settings.monthTarget - monthlySales, 0);
+  const dashboardTarget =
+    currentUser.role === "sales"
+      ? Number(settings.ownerTargets[currentUser.ownerName] || settings.monthTarget)
+      : Number(settings.monthTarget);
+  const progress = Math.min(Math.round((monthlySales / dashboardTarget) * 100), 100);
+  const remaining = Math.max(dashboardTarget - monthlySales, 0);
   document.querySelector("#targetProgress").style.width = `${progress}%`;
   document.querySelector("#monthTarget").textContent = money(remaining);
   document.querySelector("#targetCopy").textContent =
-    `目标 ${money(settings.monthTarget)} · 已完成 ${money(monthlySales)}（${progress}%）`;
+    `目标 ${money(dashboardTarget)} · 已完成 ${money(monthlySales)}（${progress}%）`;
 
   renderTeamList();
   renderDueList(dueToday);
@@ -427,7 +431,17 @@ function renderDashboard() {
 function renderTeamList() {
   const list = document.querySelector("#teamList");
   const ownerFilter = els.ownerFilter.value;
-  const owners = getOwners().filter((owner) => ownerFilter === "all" || owner === ownerFilter);
+  const availableOwners = getOwners();
+  if (
+    currentUser.role === "sales" &&
+    currentUser.ownerName &&
+    !availableOwners.includes(currentUser.ownerName)
+  ) {
+    availableOwners.push(currentUser.ownerName);
+  }
+  const owners = availableOwners
+    .sort()
+    .filter((owner) => ownerFilter === "all" || owner === ownerFilter);
 
   if (!owners.length) {
     list.innerHTML = '<div class="empty-state">还没有负责人资料。</div>';
