@@ -466,6 +466,95 @@ def create_user(conn: sqlite3.Connection, raw: dict) -> dict:
     return public_user(row)
 
 
+def save_owner_targets(conn, owner_targets: dict) -> None:
+    conn.execute(
+        """
+        INSERT INTO settings (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        """,
+        ("ownerTargets", json.dumps(owner_targets, ensure_ascii=False)),
+    )
+
+
+def create_user_with_target(conn, raw: dict) -> dict:
+    user = create_user(conn, raw)
+    if user["role"] == "sales":
+        monthly_target = float(raw.get("monthlyTarget") or 0)
+        settings = read_settings(conn)
+        targets = dict(settings["ownerTargets"])
+        targets[user["ownerName"]] = monthly_target if monthly_target > 0 else settings["monthTarget"]
+        save_owner_targets(conn, targets)
+        user["monthlyTarget"] = targets[user["ownerName"]]
+    return user
+
+
+def update_user_account(conn, user_id: str, raw: dict, current_user: dict) -> dict:
+    existing = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not existing:
+        raise ValueError("User not found")
+
+    username = str(raw.get("username") or existing["username"]).strip().lower()
+    display_name = str(raw.get("displayName") or existing["display_name"]).strip()
+    role = str(raw.get("role") or existing["role"]).strip()
+    owner_name = str(raw.get("ownerName") or existing["owner_name"]).strip()
+    password = str(raw.get("password") or "")
+    monthly_target = float(raw.get("monthlyTarget") or 0)
+
+    if not username or not display_name or role not in {"admin", "sales"}:
+        raise ValueError("Missing or invalid user fields")
+    if role == "sales" and not owner_name:
+        raise ValueError("Sales users need an owner name")
+    if user_id == current_user["id"] and role != "admin":
+        raise ValueError("You cannot remove your own admin role")
+
+    duplicate = conn.execute(
+        "SELECT id FROM users WHERE username = ? AND id <> ?",
+        (username, user_id),
+    ).fetchone()
+    if duplicate:
+        raise ValueError("Username already exists")
+
+    old_owner = existing["owner_name"]
+    if role == "admin":
+        owner_name = owner_name or display_name
+
+    conn.execute(
+        """
+        UPDATE users SET username = ?, display_name = ?, role = ?, owner_name = ?
+        WHERE id = ?
+        """,
+        (username, display_name, role, owner_name, user_id),
+    )
+
+    if password:
+        salt, password_hash = hash_password(password)
+        conn.execute(
+            "UPDATE users SET password_salt = ?, password_hash = ? WHERE id = ?",
+            (salt, password_hash, user_id),
+        )
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+
+    settings = read_settings(conn)
+    targets = dict(settings["ownerTargets"])
+    if old_owner != owner_name:
+        conn.execute("UPDATE customers SET owner = ?, updated_at = ? WHERE owner = ?", (owner_name, now_iso(), old_owner))
+        conn.execute("UPDATE activities SET owner = ? WHERE owner = ?", (owner_name, old_owner))
+        previous_target = targets.pop(old_owner, None)
+    else:
+        previous_target = targets.get(old_owner)
+
+    if role == "sales":
+        targets[owner_name] = monthly_target if monthly_target > 0 else previous_target or settings["monthTarget"]
+    else:
+        targets.pop(owner_name, None)
+    save_owner_targets(conn, targets)
+
+    row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    result = public_user(row)
+    result["monthlyTarget"] = targets.get(owner_name)
+    return result
+
+
 def normalize_customer(raw: dict) -> dict:
     return {
         "id": str(raw.get("id") or f"c{uuid.uuid4().hex[:12]}"),
@@ -622,7 +711,12 @@ class CRMHandler(SimpleHTTPRequestHandler):
             if path == "/api/users":
                 self.require_admin()
                 with db() as conn:
-                    users = [public_user(row) for row in conn.execute("SELECT * FROM users ORDER BY role, username")]
+                    targets = read_settings(conn)["ownerTargets"]
+                    users = []
+                    for row in conn.execute("SELECT * FROM users ORDER BY role, username"):
+                        user = public_user(row)
+                        user["monthlyTarget"] = targets.get(user["ownerName"])
+                        users.append(user)
                 self.send_json({"users": users})
                 return
             if path == "/api/settings":
@@ -688,7 +782,7 @@ class CRMHandler(SimpleHTTPRequestHandler):
             if path == "/api/users":
                 self.require_admin()
                 with db() as conn:
-                    user = create_user(conn, read_json(self))
+                    user = create_user_with_target(conn, read_json(self))
                 self.send_json({"ok": True, "user": user})
                 return
             if path == "/api/settings":
@@ -722,6 +816,13 @@ class CRMHandler(SimpleHTTPRequestHandler):
                     conn.execute("UPDATE customers SET stage = ?, updated_at = ? WHERE id = ?", (stage, now_iso(), customer_id))
                 self.send_json({"ok": True})
                 return
+            if len(parts) == 3 and parts[:2] == ["api", "users"]:
+                current = self.require_admin()
+                user_id = unquote(parts[2])
+                with db() as conn:
+                    user = update_user_account(conn, user_id, read_json(self), current)
+                self.send_json({"ok": True, "user": user})
+                return
             self.send_error_json(404, "API route not found")
         except PermissionError as exc:
             self.send_error_json(403 if str(exc) == "Forbidden" else 401, str(exc))
@@ -747,7 +848,12 @@ class CRMHandler(SimpleHTTPRequestHandler):
                 if user_id == current["id"]:
                     raise ValueError("Cannot delete your own account")
                 with db() as conn:
+                    user = conn.execute("SELECT owner_name FROM users WHERE id = ?", (user_id,)).fetchone()
                     conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+                    if user:
+                        targets = dict(read_settings(conn)["ownerTargets"])
+                        targets.pop(user["owner_name"], None)
+                        save_owner_targets(conn, targets)
                 self.send_json({"ok": True})
                 return
             self.send_error_json(404, "API route not found")

@@ -240,6 +240,10 @@
                   临时密码
                   <input id="newPassword" type="password" autocomplete="new-password" required />
                 </label>
+                <label>
+                  每月 KPI（RM）
+                  <input id="newMonthlyTarget" class="amount-input" inputmode="decimal" required />
+                </label>
                 <button class="primary-button" type="submit">创建账号</button>
               </form>
             </section>
@@ -286,14 +290,8 @@
               </div>
               <label>
                 每月销售目标（RM）
-                <input id="settingMonthTarget" type="number" min="1" step="1" required />
+                <input id="settingMonthTarget" class="amount-input" inputmode="decimal" required />
               </label>
-              <div class="full-field">
-                <div class="status-settings-heading">
-                  <span>销售个人每月 KPI（RM）</span>
-                </div>
-                <div id="ownerTargetSettings" class="owner-target-settings"></div>
-              </div>
               <label class="full-field">
                 销售流程阶段（每行一个）
                 <textarea id="settingStages" rows="8" required></textarea>
@@ -350,7 +348,7 @@
           </label>
           <label id="dealValueField" hidden>
             Sales Amount（RM）
-            <input id="dealValue" type="number" min="1" step="1" />
+            <input id="dealValue" class="amount-input" inputmode="decimal" />
           </label>
           <label>
             负责人
@@ -438,6 +436,53 @@
         <div class="modal-actions">
           <button class="ghost-button" type="button" data-close-dialog>取消</button>
           <button class="primary-button" type="submit">保存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="editUserDialog" class="modal account-modal">
+      <form id="editUserForm" novalidate>
+        <div class="modal-heading">
+          <div>
+            <p class="eyebrow">Account</p>
+            <h3>编辑团队账号</h3>
+          </div>
+          <button class="icon-button" aria-label="关闭" type="button" data-close-dialog>×</button>
+        </div>
+        <input id="editUserId" type="hidden" />
+        <div class="form-grid">
+          <label>
+            用户名
+            <input id="editUsername" required />
+          </label>
+          <label>
+            显示名称
+            <input id="editDisplayName" required />
+          </label>
+          <label>
+            角色
+            <select id="editRole">
+              <option value="sales">销售</option>
+              <option value="admin">管理员</option>
+            </select>
+          </label>
+          <label>
+            对应负责人
+            <input id="editOwnerName" required />
+          </label>
+          <label>
+            每月 KPI（RM）
+            <input id="editMonthlyTarget" class="amount-input" inputmode="decimal" />
+          </label>
+          <label>
+            重设密码（不修改请留空）
+            <input id="editPassword" type="password" autocomplete="new-password" />
+          </label>
+        </div>
+        <p id="editUserError" class="form-error" hidden></p>
+        <div class="modal-actions">
+          <button class="ghost-button" type="button" data-close-dialog>取消</button>
+          <button class="primary-button" type="submit">保存账号</button>
         </div>
       </form>
     </dialog>

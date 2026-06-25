@@ -39,6 +39,7 @@ const els = {
   activityTypeFilter: document.querySelector("#activityTypeFilter"),
   customerDialog: document.querySelector("#customerDialog"),
   activityDialog: document.querySelector("#activityDialog"),
+  editUserDialog: document.querySelector("#editUserDialog"),
   customerForm: document.querySelector("#customerForm"),
   activityForm: document.querySelector("#activityForm"),
   userForm: document.querySelector("#userForm"),
@@ -141,13 +142,12 @@ function renderSettingsForm() {
   if (!currentUser || currentUser.role !== "admin") return;
   document.querySelector("#settingCompanyName").value = settings.companyName;
   document.querySelector("#settingTagline").value = settings.tagline;
-  document.querySelector("#settingMonthTarget").value = settings.monthTarget;
+  document.querySelector("#settingMonthTarget").value = formatAmount(settings.monthTarget);
   document.querySelector("#settingStages").value = settings.stages.join("\n");
   document.querySelector("#settingActivityTypes").value = settings.activityTypes.join("\n");
   pendingLogoDataUrl = settings.logoDataUrl || "";
   renderLogoPreview();
   renderStatusSettings();
-  renderOwnerTargets();
 }
 
 function renderLogoPreview() {
@@ -156,25 +156,6 @@ function renderLogoPreview() {
   preview.hidden = !pendingLogoDataUrl;
   removeButton.hidden = !pendingLogoDataUrl;
   if (pendingLogoDataUrl) preview.src = pendingLogoDataUrl;
-}
-
-function renderOwnerTargets() {
-  const list = document.querySelector("#ownerTargetSettings");
-  if (!list || !currentUser || currentUser.role !== "admin") return;
-  const salesUsers = users.filter((user) => user.role === "sales" && user.ownerName);
-  list.innerHTML = salesUsers.length
-    ? salesUsers
-        .map(
-          (user) => `
-            <label class="owner-target-row">
-              <span>${escapeHtml(user.displayName)} <small>${escapeHtml(user.ownerName)}</small></span>
-              <input type="number" min="1" step="1" data-owner-target="${escapeHtml(user.ownerName)}"
-                value="${escapeHtml(settings.ownerTargets[user.ownerName] || settings.monthTarget)}" required />
-            </label>
-          `
-        )
-        .join("")
-    : '<div class="empty-state">请先建立销售账号。</div>';
 }
 
 function renderStatusSettings() {
@@ -217,7 +198,6 @@ async function loadUsers() {
   const payload = await api("/api/users");
   users = payload.users;
   renderUsers();
-  renderOwnerTargets();
 }
 
 async function offerLegacyMigration() {
@@ -264,8 +244,24 @@ function money(value) {
   return new Intl.NumberFormat("en-MY", {
     style: "currency",
     currency: "MYR",
-    maximumFractionDigits: 0
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
   }).format(Number(value || 0));
+}
+
+function formatAmount(value) {
+  return new Intl.NumberFormat("en-MY", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(Number(value || 0));
+}
+
+function parseAmount(value) {
+  const cleaned = String(value ?? "")
+    .replaceAll(",", "")
+    .replace(/[^\d.-]/g, "");
+  const number = Number(cleaned);
+  return Number.isFinite(number) ? number : 0;
 }
 
 function todayISO() {
@@ -610,6 +606,9 @@ function renderUsers() {
     return;
   }
 
+  const newTarget = document.querySelector("#newMonthlyTarget");
+  if (newTarget && !newTarget.value) newTarget.value = formatAmount(settings.monthTarget);
+
   list.innerHTML = users
     .map(
       (user) => `
@@ -617,8 +616,12 @@ function renderUsers() {
           <div>
             <strong>${escapeHtml(user.displayName)}</strong>
             <div class="owner-meta">@${escapeHtml(user.username)} · ${user.role === "admin" ? "管理员" : "销售"} · ${escapeHtml(user.ownerName || "-")}</div>
+            ${user.role === "sales" ? `<div class="owner-meta">KPI ${money(user.monthlyTarget || settings.monthTarget)}</div>` : ""}
           </div>
-          <button class="ghost-button" type="button" data-delete-user="${escapeHtml(user.id)}" ${user.id === currentUser.id ? "disabled" : ""}>删除</button>
+          <div class="user-actions">
+            <button class="ghost-button" type="button" data-edit-user="${escapeHtml(user.id)}">编辑</button>
+            <button class="ghost-button" type="button" data-delete-user="${escapeHtml(user.id)}" ${user.id === currentUser.id ? "disabled" : ""}>删除</button>
+          </div>
         </div>
       `
     )
@@ -663,7 +666,7 @@ function openCustomerForm(id) {
   document.querySelector("#customerOwner").value =
     customer?.owner || (currentUser.role === "sales" ? currentUser.ownerName : getOwners()[0] || "");
   document.querySelector("#dealStage").value = customer?.stage || settings.stages[0];
-  document.querySelector("#dealValue").value = customer?.dealValue || 0;
+  document.querySelector("#dealValue").value = formatAmount(customer?.dealValue || 0);
   document.querySelector("#expectedClose").value = customer?.expectedClose || todayISO();
   document.querySelector("#nextFollowUp").value = customer?.nextFollowUp || todayISO();
   document.querySelector("#customerFollowUpDate").value = todayISO();
@@ -724,7 +727,7 @@ function updateDealValueVisibility() {
   const input = document.querySelector("#dealValue");
   field.hidden = !won;
   input.required = won;
-  if (!won) input.value = 0;
+  if (!won) input.value = formatAmount(0);
 }
 
 async function deleteCustomer(id) {
@@ -782,7 +785,8 @@ async function createUser() {
     displayName: document.querySelector("#newDisplayName").value.trim(),
     role: document.querySelector("#newRole").value,
     ownerName: document.querySelector("#newOwnerName").value.trim(),
-    password: document.querySelector("#newPassword").value
+    password: document.querySelector("#newPassword").value,
+    monthlyTarget: parseAmount(document.querySelector("#newMonthlyTarget").value)
   };
   if (users.some((user) => user.username.toLowerCase() === payload.username.toLowerCase())) {
     throw new Error(`用户名 ${payload.username} 已经存在，请使用另一个用户名。`);
@@ -794,7 +798,51 @@ async function createUser() {
   });
   els.userForm.reset();
   showStatus(`账号 ${payload.username} 已创建。`);
-  await loadUsers();
+  await loadState();
+}
+
+function openEditUser(id) {
+  const user = users.find((item) => item.id === id);
+  if (!user) return;
+  document.querySelector("#editUserId").value = user.id;
+  document.querySelector("#editUsername").value = user.username;
+  document.querySelector("#editUsername").disabled = user.id === currentUser.id;
+  document.querySelector("#editDisplayName").value = user.displayName;
+  document.querySelector("#editRole").value = user.role;
+  document.querySelector("#editOwnerName").value = user.ownerName || user.displayName;
+  document.querySelector("#editMonthlyTarget").value = formatAmount(
+    user.monthlyTarget || settings.monthTarget
+  );
+  document.querySelector("#editPassword").value = "";
+  document.querySelector("#editUserError").hidden = true;
+  updateEditKpiVisibility();
+  els.editUserDialog.showModal();
+}
+
+function updateEditKpiVisibility() {
+  const input = document.querySelector("#editMonthlyTarget");
+  const isSales = document.querySelector("#editRole").value === "sales";
+  input.closest("label").hidden = !isSales;
+  input.required = isSales;
+}
+
+async function saveEditedUser() {
+  const userId = document.querySelector("#editUserId").value;
+  const payload = {
+    username: document.querySelector("#editUsername").value.trim(),
+    displayName: document.querySelector("#editDisplayName").value.trim(),
+    role: document.querySelector("#editRole").value,
+    ownerName: document.querySelector("#editOwnerName").value.trim(),
+    monthlyTarget: parseAmount(document.querySelector("#editMonthlyTarget").value),
+    password: document.querySelector("#editPassword").value
+  };
+  await api(`/api/users/${encodeURIComponent(userId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+  els.editUserDialog.close();
+  showStatus(`账号 ${payload.username} 已更新。`);
+  await loadState();
 }
 
 async function deleteUser(id) {
@@ -811,7 +859,7 @@ async function saveSystemSettings() {
   const nextSettings = {
     companyName: document.querySelector("#settingCompanyName").value.trim(),
     tagline: document.querySelector("#settingTagline").value.trim(),
-    monthTarget: Number(document.querySelector("#settingMonthTarget").value),
+    monthTarget: parseAmount(document.querySelector("#settingMonthTarget").value),
     stages: document
       .querySelector("#settingStages")
       .value.split("\n")
@@ -824,12 +872,7 @@ async function saveSystemSettings() {
       .map((type) => type.trim())
       .filter(Boolean),
     logoDataUrl: pendingLogoDataUrl,
-    ownerTargets: Object.fromEntries(
-      [...document.querySelectorAll("[data-owner-target]")].map((input) => [
-        input.dataset.ownerTarget,
-        Number(input.value)
-      ])
-    )
+    ownerTargets: settings.ownerTargets
   };
   const payload = await api("/api/settings", {
     method: "POST",
@@ -906,6 +949,16 @@ els.navItems.forEach((item) => {
 ].forEach((control) => control.addEventListener("input", render));
 
 document.querySelector("#customerStatus").addEventListener("change", updateDealValueVisibility);
+
+document.addEventListener("focusin", (event) => {
+  if (!event.target.classList.contains("amount-input")) return;
+  event.target.value = String(parseAmount(event.target.value) || "");
+});
+
+document.addEventListener("focusout", (event) => {
+  if (!event.target.classList.contains("amount-input")) return;
+  event.target.value = formatAmount(parseAmount(event.target.value));
+});
 
 document.querySelector("#openCustomerForm").addEventListener("click", () => openCustomerForm());
 document.querySelector("#openActivityForm").addEventListener("click", () => openActivityForm());
@@ -995,6 +1048,20 @@ els.userForm.addEventListener("submit", (event) => {
   createUser().catch((error) => showStatus(error.message, true));
 });
 
+document.querySelector("#editRole").addEventListener("change", updateEditKpiVisibility);
+
+document.querySelector("#editUserForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const error = document.querySelector("#editUserError");
+  error.hidden = true;
+  try {
+    await saveEditedUser();
+  } catch (exception) {
+    error.textContent = `保存失败：${exception.message}`;
+    error.hidden = false;
+  }
+});
+
 els.settingsForm.addEventListener("submit", (event) => {
   event.preventDefault();
   saveSystemSettings().catch((error) => showStatus(error.message, true));
@@ -1031,6 +1098,12 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const editUserButton = event.target.closest("[data-edit-user]");
+  if (editUserButton) {
+    openEditUser(editUserButton.dataset.editUser);
+    return;
+  }
+
   const removeStatusButton = event.target.closest("[data-remove-status]");
   if (removeStatusButton) {
     settings.statuses = statusSettingsFromForm();
@@ -1060,9 +1133,9 @@ els.customerForm.addEventListener("submit", async (event) => {
       source: document.querySelector("#customerSource").value.trim(),
       status: document.querySelector("#customerStatus").value,
       owner: document.querySelector("#customerOwner").value.trim(),
-      dealValue: isWonStatus(document.querySelector("#customerStatus").value)
-        ? Number(document.querySelector("#dealValue").value || 0)
-        : 0,
+    dealValue: isWonStatus(document.querySelector("#customerStatus").value)
+      ? parseAmount(document.querySelector("#dealValue").value)
+      : 0,
       stage: document.querySelector("#dealStage").value,
       expectedClose: document.querySelector("#expectedClose").value,
       nextFollowUp: document.querySelector("#nextFollowUp").value,

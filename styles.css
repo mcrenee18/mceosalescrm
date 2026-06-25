@@ -602,6 +602,15 @@ textarea {
   opacity: 0.55;
 }
 
+.user-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.account-modal {
+  width: min(680px, calc(100vw - 28px));
+}
+
 .team-row {
   display: grid;
   grid-template-columns: minmax(120px, 1fr) minmax(160px, 2fr) auto;
