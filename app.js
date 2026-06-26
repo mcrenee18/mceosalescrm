@@ -22,6 +22,8 @@ let users = [];
 let activeView = "dashboard";
 let draggedStatusIndex = null;
 let pendingLogoDataUrl = "";
+const collapsedActivityCustomers = new Set();
+const collapsedKanbanStages = new Set();
 
 const els = {
   loginShell: document.querySelector("#loginShell"),
@@ -518,17 +520,24 @@ function renderKanban() {
   board.innerHTML = settings.stages
     .map((stage) => {
       const deals = customers.filter((customer) => customer.stage === stage);
+      const collapsed = collapsedKanbanStages.has(stage);
       return `
-        <section class="kanban-column">
+        <section class="kanban-column ${collapsed ? "is-collapsed" : ""}">
           <div class="column-heading">
             <span>${escapeHtml(stage)}</span>
-            <span class="count-pill">${deals.length}</span>
+            <div class="column-heading-actions">
+              <span class="count-pill">${deals.length}</span>
+              <button class="collapse-button" type="button" data-toggle-stage="${escapeHtml(stage)}" aria-expanded="${String(!collapsed)}">
+                ${collapsed ? "展开" : "缩小"}
+              </button>
+            </div>
           </div>
-          ${
-            deals.length
-              ? deals
-                  .map(
-                    (customer) => `
+          <div class="kanban-column-body">
+            ${
+              deals.length
+                ? deals
+                    .map(
+                      (customer) => `
                     <article class="deal-card" style="border-left-color:${escapeHtml(statusDefinition(customer.status).color)}">
                       <header>
                         <strong>${escapeHtml(customer.name)}</strong>
@@ -542,10 +551,11 @@ function renderKanban() {
                       </div>
                     </article>
                   `
-                  )
-                  .join("")
-              : '<div class="empty-state">暂无客户</div>'
-          }
+                    )
+                    .join("")
+                : '<div class="empty-state">暂无客户</div>'
+            }
+          </div>
         </section>
       `;
     })
@@ -619,14 +629,20 @@ function renderActivities() {
     .map(([customerId, customerActivities]) => {
       const customer = getCustomer(customerId);
       const latestDate = customerActivities[0]?.date || "";
+      const collapsed = collapsedActivityCustomers.has(customerId);
       return `
-        <article class="timeline-item activity-group">
+        <article class="timeline-item activity-group ${collapsed ? "is-collapsed" : ""}">
           <header class="activity-group-header">
             <div>
               <strong>${escapeHtml(customer?.name || "未知客户")}</strong>
               <div class="activity-meta">${escapeHtml(customer?.owner || customerActivities[0]?.owner || "-")} · ${customerActivities.length} 条跟进 · 最新 ${escapeHtml(latestDate)}</div>
             </div>
-            ${customer ? `<button class="ghost-button" type="button" data-add-activity="${escapeHtml(customer.id)}">新增跟进</button>` : ""}
+            <div class="activity-group-actions">
+              <button class="collapse-button" type="button" data-toggle-activity-customer="${escapeHtml(customerId)}" aria-expanded="${String(!collapsed)}">
+                ${collapsed ? "展开" : "缩小"}
+              </button>
+              ${customer ? `<button class="ghost-button" type="button" data-add-activity="${escapeHtml(customer.id)}">新增跟进</button>` : ""}
+            </div>
           </header>
           <div class="activity-group-list">
             ${customerActivities
@@ -692,7 +708,7 @@ function setView(view) {
   const titles = {
     dashboard: "Dashboard",
     pipeline: "销售看板",
-    customers: "客户与线索",
+    customers: "客户状态",
     activities: "跟进记录",
     accounts: "团队账号",
     settings: "系统设置"
@@ -1270,6 +1286,30 @@ document.addEventListener("click", (event) => {
   const activityButton = event.target.closest("[data-add-activity]");
   if (activityButton) {
     openActivityForm(activityButton.dataset.addActivity);
+    return;
+  }
+
+  const toggleActivityButton = event.target.closest("[data-toggle-activity-customer]");
+  if (toggleActivityButton) {
+    const customerId = toggleActivityButton.dataset.toggleActivityCustomer;
+    if (collapsedActivityCustomers.has(customerId)) {
+      collapsedActivityCustomers.delete(customerId);
+    } else {
+      collapsedActivityCustomers.add(customerId);
+    }
+    renderActivities();
+    return;
+  }
+
+  const toggleStageButton = event.target.closest("[data-toggle-stage]");
+  if (toggleStageButton) {
+    const stage = toggleStageButton.dataset.toggleStage;
+    if (collapsedKanbanStages.has(stage)) {
+      collapsedKanbanStages.delete(stage);
+    } else {
+      collapsedKanbanStages.add(stage);
+    }
+    renderKanban();
     return;
   }
 

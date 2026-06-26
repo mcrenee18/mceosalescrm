@@ -685,9 +685,36 @@ textarea {
   align-items: flex-start;
 }
 
+.activity-group-actions,
+.column-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.collapse-button {
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--ink);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.collapse-button:hover {
+  border-color: #a9bac8;
+}
+
 .activity-group-list {
   display: grid;
   gap: 10px;
+}
+
+.activity-group.is-collapsed .activity-group-list,
+.kanban-column.is-collapsed .kanban-column-body {
+  display: none;
 }
 
 .activity-entry {
@@ -741,6 +768,7 @@ textarea {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   min-height: 34px;
   margin-bottom: 10px;
   font-weight: 700;
