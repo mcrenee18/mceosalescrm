@@ -252,6 +252,11 @@ button {
   gap: 10px;
 }
 
+.filter-row {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .user-chip {
   min-height: 40px;
   display: grid;
@@ -666,6 +671,41 @@ textarea {
 .due-item,
 .timeline-item {
   padding: 12px;
+}
+
+.activity-group {
+  display: grid;
+  gap: 12px;
+}
+
+.activity-group-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.activity-group-list {
+  display: grid;
+  gap: 10px;
+}
+
+.activity-entry {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fafb;
+}
+
+.activity-entry p {
+  margin: 8px 0 0;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
 .due-item strong,

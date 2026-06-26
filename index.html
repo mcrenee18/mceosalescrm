@@ -80,10 +80,6 @@
               <span aria-hidden="true">⌕</span>
               <input id="globalSearch" type="search" placeholder="搜索客户、电话、负责人..." />
             </div>
-            <button id="exportBackup" class="ghost-button" type="button">Export Backup</button>
-            <button id="importBackup" class="ghost-button admin-only" type="button">Import Backup</button>
-            <input id="backupFile" type="file" accept="application/json,.json" hidden />
-            <button id="seedButton" class="ghost-button admin-only" type="button">重置示例数据</button>
             <button id="openCustomerForm" class="primary-button" type="button">新增客户</button>
             <div class="user-chip">
               <span id="currentUserLabel">-</span>
@@ -159,7 +155,7 @@
           <div class="section-heading table-heading">
             <div>
               <p class="eyebrow">Contacts</p>
-              <h3>客户与潜在客户</h3>
+              <h3>客户状态</h3>
             </div>
             <div class="filter-row">
               <select id="statusFilter" aria-label="状态筛选">
@@ -170,6 +166,9 @@
               </select>
               <select id="sourceFilter" aria-label="Batch 筛选">
                 <option value="all">全部 Batch</option>
+              </select>
+              <select id="customerOwnerFilter" aria-label="负责人筛选">
+                <option value="all">全部负责人</option>
               </select>
             </div>
           </div>
@@ -201,6 +200,9 @@
             <div class="filter-row">
               <select id="activityTypeFilter" aria-label="跟进类型筛选">
                 <option value="all">全部类型</option>
+              </select>
+              <select id="activityOwnerFilter" aria-label="负责人筛选">
+                <option value="all">全部负责人</option>
               </select>
             </div>
           </div>
@@ -280,6 +282,21 @@
               <p id="changePasswordError" class="form-error full-field" hidden></p>
               <button class="primary-button" type="submit">保存新密码</button>
             </form>
+          </section>
+
+          <section class="work-section settings-section admin-only">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Backup</p>
+                <h3>资料备份</h3>
+              </div>
+            </div>
+            <div class="settings-actions">
+              <button id="exportBackup" class="ghost-button" type="button">Export Backup</button>
+              <button id="importBackup" class="ghost-button" type="button">Import Backup</button>
+              <input id="backupFile" type="file" accept="application/json,.json" hidden />
+            </div>
+            <p class="settings-note">Export 会下载 JSON 备份；Import 会用备份文件替换目前数据库里的 CRM 资料。</p>
           </section>
 
           <section class="work-section settings-section admin-only">

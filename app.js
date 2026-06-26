@@ -36,6 +36,8 @@ const els = {
   search: document.querySelector("#globalSearch"),
   ownerFilter: document.querySelector("#ownerFilter"),
   stageOwnerFilter: document.querySelector("#stageOwnerFilter"),
+  customerOwnerFilter: document.querySelector("#customerOwnerFilter"),
+  activityOwnerFilter: document.querySelector("#activityOwnerFilter"),
   statusFilter: document.querySelector("#statusFilter"),
   sourceFilter: document.querySelector("#sourceFilter"),
   activityTypeFilter: document.querySelector("#activityTypeFilter"),
@@ -110,6 +112,8 @@ function showApp() {
   document.querySelector("#customerOwner").disabled = currentUser.role !== "admin";
   els.ownerFilter.disabled = currentUser.role !== "admin";
   els.stageOwnerFilter.disabled = currentUser.role !== "admin";
+  els.customerOwnerFilter.disabled = currentUser.role !== "admin";
+  els.activityOwnerFilter.disabled = currentUser.role !== "admin";
 }
 
 async function loadState() {
@@ -302,9 +306,10 @@ function filteredCustomers() {
   const search = els.search.value.trim().toLowerCase();
   const owner = els.ownerFilter.value;
   const stageOwner = els.stageOwnerFilter.value;
+  const customerOwner = els.customerOwnerFilter.value;
   const status = els.statusFilter.value;
   const source = els.sourceFilter.value;
-  const selectedOwner = activeView === "pipeline" ? stageOwner : owner;
+  const selectedOwner = activeView === "pipeline" ? stageOwner : activeView === "customers" ? customerOwner : owner;
 
   return state.customers.filter((customer) => {
     if (search && !queryText(customer).includes(search)) return false;
@@ -319,7 +324,7 @@ function renderSelectOptions() {
   const owners = getOwners();
   const sources = getSources();
 
-  [els.ownerFilter, els.stageOwnerFilter].forEach((select) => {
+  [els.ownerFilter, els.stageOwnerFilter, els.customerOwnerFilter, els.activityOwnerFilter].forEach((select) => {
     const current = select.value;
     select.innerHTML = '<option value="all">全部负责人</option>';
     owners.forEach((owner) => {
@@ -587,9 +592,11 @@ function renderCustomerTable() {
 function renderActivities() {
   const timeline = document.querySelector("#activityTimeline");
   const type = els.activityTypeFilter.value;
+  const owner = els.activityOwnerFilter.value;
   const search = els.search.value.trim().toLowerCase();
   const activities = state.activities
     .filter((activity) => type === "all" || activity.type === type)
+    .filter((activity) => owner === "all" || activity.owner === owner)
     .filter((activity) => {
       const customer = getCustomer(activity.customerId);
       const haystack = [customer?.name, activity.type, activity.owner, activity.note].join(" ").toLowerCase();
@@ -602,15 +609,40 @@ function renderActivities() {
     return;
   }
 
-  timeline.innerHTML = activities
-    .map((activity) => {
-      const customer = getCustomer(activity.customerId);
+  const grouped = activities.reduce((groups, activity) => {
+    const key = activity.customerId || "unknown";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(activity);
+    return groups;
+  }, new Map());
+
+  timeline.innerHTML = [...grouped.entries()]
+    .map(([customerId, customerActivities]) => {
+      const customer = getCustomer(customerId);
+      const latestDate = customerActivities[0]?.date || "";
       return `
-        <article class="timeline-item">
-          <strong>${escapeHtml(customer?.name || "未知客户")} · ${escapeHtml(activity.type)}</strong>
-          <div class="activity-meta">${escapeHtml(activity.date)} · ${escapeHtml(activity.owner)}</div>
-          <p>${escapeHtml(activity.note)}</p>
-          ${activityPhotosHtml(activity.attachments)}
+        <article class="timeline-item activity-group">
+          <header class="activity-group-header">
+            <div>
+              <strong>${escapeHtml(customer?.name || "未知客户")}</strong>
+              <div class="activity-meta">${escapeHtml(customer?.owner || customerActivities[0]?.owner || "-")} · ${customerActivities.length} 条跟进 · 最新 ${escapeHtml(latestDate)}</div>
+            </div>
+            ${customer ? `<button class="ghost-button" type="button" data-add-activity="${escapeHtml(customer.id)}">新增跟进</button>` : ""}
+          </header>
+          <div class="activity-group-list">
+            ${customerActivities
+              .map(
+                (activity) => `
+                  <div class="activity-entry">
+                    <strong>${escapeHtml(activity.date)} · ${escapeHtml(activity.type)}</strong>
+                    <div class="activity-meta">${escapeHtml(activity.owner)}</div>
+                    <p>${escapeHtml(activity.note || "只有照片，没有文字备注。")}</p>
+                    ${activityPhotosHtml(activity.attachments)}
+                  </div>
+                `
+              )
+              .join("")}
+          </div>
         </article>
       `;
     })
@@ -1080,6 +1112,8 @@ els.navItems.forEach((item) => {
   els.search,
   els.ownerFilter,
   els.stageOwnerFilter,
+  els.customerOwnerFilter,
+  els.activityOwnerFilter,
   els.statusFilter,
   els.sourceFilter,
   els.activityTypeFilter
@@ -1110,13 +1144,6 @@ document.querySelector("#importBackup").addEventListener("click", () => els.back
 els.backupFile.addEventListener("change", () =>
   importBackupFile(els.backupFile.files[0]).catch((error) => showStatus(error.message, true))
 );
-
-document.querySelector("#seedButton").addEventListener("click", async () => {
-  if (!window.confirm("这会清除当前数据库里的 CRM 资料，确定重置成示例数据？")) return;
-  await api("/api/reset", { method: "POST" });
-  showStatus("数据库已重置成示例数据。");
-  await loadState();
-});
 
 document.querySelector("#addStatusSetting").addEventListener("click", () => {
   settings.statuses = statusSettingsFromForm();
