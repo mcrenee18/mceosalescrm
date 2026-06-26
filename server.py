@@ -25,6 +25,8 @@ PORT = int(os.environ.get("PORT") or os.environ.get("CRM_PORT", "5173"))
 SESSION_DAYS = 7
 SESSION_COOKIE = "crm_session"
 COOKIE_SECURE = os.environ.get("CRM_COOKIE_SECURE", "0") == "1"
+MAX_ACTIVITY_ATTACHMENTS = 3
+MAX_ATTACHMENT_BYTES = 900_000
 
 STAGES = ["广告", "3天免费 Webinar", "Booster", "Closing", "Follow up"]
 DEFAULT_SETTINGS = {
@@ -268,6 +270,7 @@ def init_db() -> None:
             );
             """
         )
+        ensure_schema(conn)
         ensure_settings(conn)
         if conn.execute("SELECT COUNT(*) AS count FROM customers").fetchone()["count"] == 0:
             replace_all(conn, SEED_DATA)
@@ -276,6 +279,28 @@ def init_db() -> None:
         elif conn.execute("SELECT COUNT(*) AS count FROM users").fetchone()["count"] == 0:
             for user in SEED_USERS:
                 create_user(conn, user)
+
+
+def column_exists(conn, table: str, column: str) -> bool:
+    if conn.is_postgres:
+        row = conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = ? AND column_name = ?
+            """,
+            (table, column),
+        ).fetchone()
+        return row["count"] > 0
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(row["name"] == column for row in rows)
+
+
+def ensure_schema(conn) -> None:
+    if not column_exists(conn, "customers", "booster_comment"):
+        conn.execute("ALTER TABLE customers ADD COLUMN booster_comment TEXT")
+    if not column_exists(conn, "activities", "attachments"):
+        conn.execute("ALTER TABLE activities ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]'")
 
 
 def ensure_settings(conn) -> None:
@@ -567,9 +592,44 @@ def normalize_customer(raw: dict) -> dict:
         "dealValue": float(raw.get("dealValue") or raw.get("deal_value") or 0),
         "stage": str(raw.get("stage") or STAGES[0]).strip(),
         "expectedClose": str(raw.get("expectedClose") or raw.get("expected_close") or "").strip(),
+        "boosterComment": str(raw.get("boosterComment") or raw.get("booster_comment") or "").strip(),
         "nextFollowUp": str(raw.get("nextFollowUp") or raw.get("next_follow_up") or "").strip(),
         "note": str(raw.get("note") or "").strip(),
     }
+
+
+def normalize_attachments(raw_value) -> list[dict]:
+    if raw_value is None:
+        return []
+    raw_attachments = raw_value
+    if isinstance(raw_value, str):
+        try:
+            raw_attachments = json.loads(raw_value)
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(raw_attachments, list):
+        return []
+
+    attachments = []
+    for item in raw_attachments[:MAX_ACTIVITY_ATTACHMENTS]:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "photo.jpg").strip()[:120]
+        mime_type = str(item.get("type") or "").strip()
+        data_url = str(item.get("dataUrl") or item.get("data_url") or "").strip()
+        if mime_type not in {"image/jpeg", "image/png", "image/webp"}:
+            raise ValueError("Only JPG, PNG, or WebP photos are supported")
+        prefix = f"data:{mime_type};base64,"
+        if not data_url.startswith(prefix):
+            raise ValueError("Invalid photo data")
+        try:
+            byte_size = len(base64.b64decode(data_url.split(",", 1)[1], validate=True))
+        except ValueError as exc:
+            raise ValueError("Invalid photo data") from exc
+        if byte_size > MAX_ATTACHMENT_BYTES:
+            raise ValueError("Each photo must be smaller than 900 KB")
+        attachments.append({"name": name, "type": mime_type, "dataUrl": data_url})
+    return attachments
 
 
 def normalize_activity(raw: dict) -> dict:
@@ -580,6 +640,7 @@ def normalize_activity(raw: dict) -> dict:
         "date": str(raw.get("date") or "").strip(),
         "owner": str(raw.get("owner") or "").strip(),
         "note": str(raw.get("note") or "").strip(),
+        "attachments": normalize_attachments(raw.get("attachments")),
     }
 
 
@@ -591,10 +652,12 @@ def validate_customer(customer: dict) -> None:
 
 
 def validate_activity(activity: dict) -> None:
-    required = ["customerId", "type", "date", "owner", "note"]
+    required = ["customerId", "type", "date", "owner"]
     missing = [field for field in required if not activity.get(field)]
     if missing:
         raise ValueError(f"Missing activity fields: {', '.join(missing)}")
+    if not activity.get("note") and not activity.get("attachments"):
+        raise ValueError("Follow-up note or photo is required")
 
 
 def can_access_owner(user: dict, owner: str) -> bool:
@@ -622,23 +685,27 @@ def replace_all(conn: sqlite3.Connection, data: dict) -> None:
             """
             INSERT INTO customers (
                 id, name, phone, email, source, status, owner, deal_value, stage,
-                expected_close, next_follow_up, note, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                expected_close, booster_comment, next_follow_up, note, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 customer["id"], customer["name"], customer["phone"], customer["email"], customer["source"],
                 customer["status"], customer["owner"], customer["dealValue"], customer["stage"],
-                customer["expectedClose"], customer["nextFollowUp"], customer["note"], timestamp, timestamp,
+                customer["expectedClose"], customer["boosterComment"], customer["nextFollowUp"],
+                customer["note"], timestamp, timestamp,
             ),
         )
 
     for activity in valid_activities:
         conn.execute(
             """
-            INSERT INTO activities (id, customer_id, type, date, owner, note, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO activities (id, customer_id, type, date, owner, note, attachments, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (activity["id"], activity["customerId"], activity["type"], activity["date"], activity["owner"], activity["note"], timestamp),
+            (
+                activity["id"], activity["customerId"], activity["type"], activity["date"],
+                activity["owner"], activity["note"], json.dumps(activity["attachments"], ensure_ascii=False), timestamp,
+            ),
         )
 
 
@@ -668,12 +735,17 @@ def read_state(user: dict) -> dict:
             "id": row["id"], "name": row["name"], "phone": row["phone"], "email": row["email"],
             "source": row["source"], "status": row["status"], "owner": row["owner"],
             "dealValue": row["deal_value"], "stage": row["stage"],
-            "expectedClose": row["expected_close"], "nextFollowUp": row["next_follow_up"], "note": row["note"],
+            "expectedClose": row["expected_close"], "boosterComment": row["booster_comment"] or "",
+            "nextFollowUp": row["next_follow_up"], "note": row["note"],
         }
         for row in customer_rows
     ]
     activities = [
-        {"id": row["id"], "customerId": row["customer_id"], "type": row["type"], "date": row["date"], "owner": row["owner"], "note": row["note"]}
+        {
+            "id": row["id"], "customerId": row["customer_id"], "type": row["type"],
+            "date": row["date"], "owner": row["owner"], "note": row["note"],
+            "attachments": normalize_attachments(row["attachments"]),
+        }
         for row in activity_rows
     ]
     return {"customers": customers, "activities": activities, "user": user, "settings": settings}
@@ -954,19 +1026,21 @@ class CRMHandler(SimpleHTTPRequestHandler):
                 """
                 INSERT INTO customers (
                     id, name, phone, email, source, status, owner, deal_value, stage,
-                    expected_close, next_follow_up, note, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    expected_close, booster_comment, next_follow_up, note, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name, phone = excluded.phone, email = excluded.email,
                     source = excluded.source, status = excluded.status, owner = excluded.owner,
                     deal_value = excluded.deal_value, stage = excluded.stage,
-                    expected_close = excluded.expected_close, next_follow_up = excluded.next_follow_up,
-                    note = excluded.note, updated_at = excluded.updated_at
+                    expected_close = excluded.expected_close, booster_comment = excluded.booster_comment,
+                    next_follow_up = excluded.next_follow_up, note = excluded.note,
+                    updated_at = excluded.updated_at
                 """,
                 (
                     customer["id"], customer["name"], customer["phone"], customer["email"], customer["source"],
                     customer["status"], customer["owner"], customer["dealValue"], customer["stage"],
-                    customer["expectedClose"], customer["nextFollowUp"], customer["note"], created_at, timestamp,
+                    customer["expectedClose"], customer["boosterComment"], customer["nextFollowUp"],
+                    customer["note"], created_at, timestamp,
                 ),
             )
 
@@ -976,8 +1050,14 @@ class CRMHandler(SimpleHTTPRequestHandler):
             activity["owner"] = customer["owner"]
         with db() as conn:
             conn.execute(
-                "INSERT INTO activities (id, customer_id, type, date, owner, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (activity["id"], activity["customerId"], activity["type"], activity["date"], activity["owner"], activity["note"], now_iso()),
+                """
+                INSERT INTO activities (id, customer_id, type, date, owner, note, attachments, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    activity["id"], activity["customerId"], activity["type"], activity["date"],
+                    activity["owner"], activity["note"], json.dumps(activity["attachments"], ensure_ascii=False), now_iso(),
+                ),
             )
 
     def session_token(self) -> str | None:

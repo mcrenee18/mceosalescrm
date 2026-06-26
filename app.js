@@ -1,4 +1,6 @@
 const legacyStorageKey = "sales-crm-prototype-v1";
+const maxActivityPhotos = 3;
+const maxPhotoBytes = 900_000;
 let settings = {
   companyName: "Sales CRM",
   tagline: "团队销售工作台",
@@ -608,6 +610,7 @@ function renderActivities() {
           <strong>${escapeHtml(customer?.name || "未知客户")} · ${escapeHtml(activity.type)}</strong>
           <div class="activity-meta">${escapeHtml(activity.date)} · ${escapeHtml(activity.owner)}</div>
           <p>${escapeHtml(activity.note)}</p>
+          ${activityPhotosHtml(activity.attachments)}
         </article>
       `;
     })
@@ -683,10 +686,13 @@ function openCustomerForm(id) {
   document.querySelector("#dealStage").value = customer?.stage || settings.stages[0];
   document.querySelector("#dealValue").value = formatAmount(customer?.dealValue || 0);
   document.querySelector("#expectedClose").value = customer?.expectedClose || todayISO();
+  document.querySelector("#boosterComment").value = customer?.boosterComment || "";
   document.querySelector("#nextFollowUp").value = customer?.nextFollowUp || todayISO();
   document.querySelector("#customerFollowUpDate").value = todayISO();
   document.querySelector("#customerFollowUpType").value = settings.activityTypes[0];
   document.querySelector("#customerNote").value = "";
+  document.querySelector("#customerAttachmentInput").value = "";
+  updateAttachmentPreview("#customerAttachmentInput", "#customerAttachmentPreview");
   document.querySelector("#customerFormError").hidden = true;
   document.querySelector("#customerFormError").textContent = "";
   const saveButton = document.querySelector("#saveCustomerButton");
@@ -718,6 +724,7 @@ function renderCustomerHistory(customerId) {
               <strong>${escapeHtml(activity.date)} · ${escapeHtml(activity.type)}</strong>
               <span>${escapeHtml(activity.owner)}</span>
               <p>${escapeHtml(activity.note)}</p>
+              ${activityPhotosHtml(activity.attachments)}
             </article>
           `
         )
@@ -733,6 +740,8 @@ function openActivityForm(customerId = "") {
     currentUser.role === "sales" ? currentUser.ownerName : getCustomer(customerId)?.owner || getOwners()[0] || "";
   document.querySelector("#activityOwner").disabled = currentUser.role !== "admin";
   document.querySelector("#activityNote").value = "";
+  document.querySelector("#activityAttachmentInput").value = "";
+  updateAttachmentPreview("#activityAttachmentInput", "#activityAttachmentPreview");
   els.activityDialog.showModal();
 }
 
@@ -943,6 +952,100 @@ function fileToDataUrl(file) {
   });
 }
 
+function loadImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("无法处理照片"));
+    image.src = dataUrl;
+  });
+}
+
+function canvasToDataUrl(canvas, quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error("无法压缩照片"));
+          return;
+        }
+        fileToDataUrl(blob).then(resolve).catch(reject);
+      },
+      "image/jpeg",
+      quality
+    );
+  });
+}
+
+async function compressPhoto(file) {
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+    throw new Error("照片只支持 JPG、PNG 或 WebP。");
+  }
+  const dataUrl = await fileToDataUrl(file);
+  const image = await loadImage(dataUrl);
+  const maxSide = 1200;
+  const ratio = Math.min(1, maxSide / Math.max(image.width, image.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.width * ratio));
+  canvas.height = Math.max(1, Math.round(image.height * ratio));
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  let quality = 0.78;
+  let compressed = await canvasToDataUrl(canvas, quality);
+  while (compressed.length > maxPhotoBytes * 1.37 && quality > 0.45) {
+    quality -= 0.08;
+    compressed = await canvasToDataUrl(canvas, quality);
+  }
+  if (compressed.length > maxPhotoBytes * 1.37) {
+    throw new Error(`${file.name} 太大，压缩后仍超过限制。`);
+  }
+  return {
+    name: file.name,
+    type: "image/jpeg",
+    dataUrl: compressed
+  };
+}
+
+async function attachmentsFromInput(selector) {
+  const input = document.querySelector(selector);
+  const files = [...(input.files || [])];
+  if (files.length > maxActivityPhotos) {
+    throw new Error(`每条跟进最多上传 ${maxActivityPhotos} 张照片。`);
+  }
+  return Promise.all(files.map((file) => compressPhoto(file)));
+}
+
+function updateAttachmentPreview(inputSelector, previewSelector) {
+  const input = document.querySelector(inputSelector);
+  const preview = document.querySelector(previewSelector);
+  const files = [...(input.files || [])];
+  if (!files.length) {
+    preview.textContent = `最多 ${maxActivityPhotos} 张照片，每张会自动压缩。`;
+    return;
+  }
+  preview.textContent = `已选择 ${files.length} 张：${files.map((file) => file.name).join("、")}`;
+}
+
+function activityPhotosHtml(attachments = []) {
+  if (!attachments.length) return "";
+  return `
+    <div class="activity-photos">
+      ${attachments
+        .map(
+          (photo) => `
+            <a href="${photo.dataUrl}" target="_blank" rel="noopener" title="${escapeHtml(photo.name)}">
+              <img src="${photo.dataUrl}" alt="${escapeHtml(photo.name)}" loading="lazy" />
+            </a>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 els.loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   els.loginError.hidden = true;
@@ -983,6 +1086,12 @@ els.navItems.forEach((item) => {
 ].forEach((control) => control.addEventListener("input", render));
 
 document.querySelector("#customerStatus").addEventListener("change", updateDealValueVisibility);
+document.querySelector("#customerAttachmentInput").addEventListener("change", () => {
+  updateAttachmentPreview("#customerAttachmentInput", "#customerAttachmentPreview");
+});
+document.querySelector("#activityAttachmentInput").addEventListener("change", () => {
+  updateAttachmentPreview("#activityAttachmentInput", "#activityAttachmentPreview");
+});
 
 document.addEventListener("focusin", (event) => {
   if (!event.target.classList.contains("amount-input")) return;
@@ -1179,11 +1288,12 @@ els.customerForm.addEventListener("submit", async (event) => {
       source: document.querySelector("#customerSource").value.trim(),
       status: document.querySelector("#customerStatus").value,
       owner: document.querySelector("#customerOwner").value.trim(),
-    dealValue: isWonStatus(document.querySelector("#customerStatus").value)
-      ? parseAmount(document.querySelector("#dealValue").value)
-      : 0,
+      dealValue: isWonStatus(document.querySelector("#customerStatus").value)
+        ? parseAmount(document.querySelector("#dealValue").value)
+        : 0,
       stage: document.querySelector("#dealStage").value,
       expectedClose: document.querySelector("#expectedClose").value,
+      boosterComment: document.querySelector("#boosterComment").value.trim(),
       nextFollowUp: document.querySelector("#nextFollowUp").value,
       note: document.querySelector("#customerNote").value.trim()
     };
@@ -1214,11 +1324,12 @@ els.customerForm.addEventListener("submit", async (event) => {
       body: JSON.stringify(customer)
     });
     const followUpNote = document.querySelector("#customerNote").value.trim();
+    const followUpAttachments = await attachmentsFromInput("#customerAttachmentInput");
     els.customerDialog.close();
     await loadState();
     showStatus(`${customer.name} 已保存。`);
 
-    if (followUpNote) {
+    if (followUpNote || followUpAttachments.length) {
       try {
         await api("/api/activities", {
           method: "POST",
@@ -1227,7 +1338,8 @@ els.customerForm.addEventListener("submit", async (event) => {
             type: document.querySelector("#customerFollowUpType").value,
             date: document.querySelector("#customerFollowUpDate").value || todayISO(),
             owner: customer.owner,
-            note: followUpNote
+            note: followUpNote,
+            attachments: followUpAttachments
           })
         });
         await loadState();
@@ -1247,15 +1359,15 @@ els.customerForm.addEventListener("submit", async (event) => {
 
 els.activityForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const activity = {
-    customerId: document.querySelector("#activityCustomer").value,
-    type: document.querySelector("#activityType").value,
-    date: document.querySelector("#activityDate").value,
-    owner: document.querySelector("#activityOwner").value.trim(),
-    note: document.querySelector("#activityNote").value.trim()
-  };
-
   try {
+    const activity = {
+      customerId: document.querySelector("#activityCustomer").value,
+      type: document.querySelector("#activityType").value,
+      date: document.querySelector("#activityDate").value,
+      owner: document.querySelector("#activityOwner").value.trim(),
+      note: document.querySelector("#activityNote").value.trim(),
+      attachments: await attachmentsFromInput("#activityAttachmentInput")
+    };
     await api("/api/activities", {
       method: "POST",
       body: JSON.stringify(activity)

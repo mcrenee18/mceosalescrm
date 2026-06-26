@@ -383,6 +383,10 @@
             Booster 日期
             <input id="expectedClose" type="date" required />
           </label>
+          <label class="full-field">
+            Booster Comment
+            <textarea id="boosterComment" rows="2" placeholder="填写 Booster 当天重点、客户反应或注意事项"></textarea>
+          </label>
           <label>
             下次跟进
             <input id="nextFollowUp" type="date" required />
@@ -409,6 +413,11 @@
             跟进内容
             <textarea id="customerNote" rows="3" placeholder="填写本次沟通、客户回应和下一步行动"></textarea>
           </label>
+          <label class="full-field photo-upload-field">
+            上传照片
+            <input id="customerAttachmentInput" type="file" accept="image/png,image/jpeg,image/webp" multiple />
+            <span id="customerAttachmentPreview" class="photo-upload-preview">最多 3 张照片，每张会自动压缩。</span>
+          </label>
         </section>
         <section id="customerHistorySection" class="followup-history">
           <p class="eyebrow">History</p>
@@ -424,7 +433,7 @@
     </dialog>
 
     <dialog id="activityDialog" class="modal">
-      <form id="activityForm" method="dialog">
+      <form id="activityForm" novalidate>
         <div class="modal-heading">
           <div>
             <p class="eyebrow">Follow Up</p>
@@ -452,7 +461,12 @@
         </div>
         <label class="full-field">
           内容
-          <textarea id="activityNote" rows="4" required></textarea>
+          <textarea id="activityNote" rows="4"></textarea>
+        </label>
+        <label class="full-field photo-upload-field">
+          上传照片
+          <input id="activityAttachmentInput" type="file" accept="image/png,image/jpeg,image/webp" multiple />
+          <span id="activityAttachmentPreview" class="photo-upload-preview">最多 3 张照片，每张会自动压缩。</span>
         </label>
         <div class="modal-actions">
           <button class="ghost-button" type="button" data-close-dialog>取消</button>
