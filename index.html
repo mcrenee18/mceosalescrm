@@ -164,8 +164,8 @@
                 <option value="客户">客户</option>
                 <option value="暂停">暂停</option>
               </select>
-              <select id="sourceFilter" aria-label="Batch 筛选">
-                <option value="all">全部 Batch</option>
+              <select id="sourceFilter" aria-label="Booster 月份筛选">
+                <option value="all">全部 Booster 月份</option>
               </select>
               <select id="customerOwnerFilter" aria-label="负责人筛选">
                 <option value="all">全部负责人</option>
@@ -178,10 +178,9 @@
                 <tr>
                   <th>姓名</th>
                   <th>联系方式</th>
-                  <th>Batch</th>
                   <th>状态</th>
                   <th>负责人</th>
-                  <th>Booster MDS 月份</th>
+                  <th>Booster 月份</th>
                   <th>下次跟进</th>
                   <th>操作</th>
                 </tr>
@@ -284,7 +283,7 @@
             </form>
           </section>
 
-          <section class="work-section settings-section admin-only">
+          <section class="work-section settings-section">
             <div class="section-heading">
               <div>
                 <p class="eyebrow">Backup</p>
@@ -293,10 +292,10 @@
             </div>
             <div class="settings-actions">
               <button id="exportBackup" class="ghost-button" type="button">Export Backup</button>
-              <button id="importBackup" class="ghost-button" type="button">Import Backup</button>
+              <button id="importBackup" class="ghost-button admin-only" type="button">Import Backup</button>
               <input id="backupFile" type="file" accept="application/json,.json" hidden />
             </div>
-            <p class="settings-note">Export 会下载 JSON 备份；Import 会用备份文件替换目前数据库里的 CRM 资料。</p>
+            <p class="settings-note">Export 会下载你目前可看到的 JSON 备份；Import 只有管理员可以使用。</p>
           </section>
 
           <section class="work-section settings-section admin-only">

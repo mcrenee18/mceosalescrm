@@ -283,8 +283,8 @@ function getOwners() {
   return [...new Set(state.customers.map((customer) => customer.owner).filter(Boolean))].sort();
 }
 
-function getSources() {
-  return [...new Set(state.customers.map((customer) => customer.source).filter(Boolean))].sort();
+function getCustomerStages() {
+  return [...new Set([...settings.stages, ...state.customers.map((customer) => customer.stage)].filter(Boolean))];
 }
 
 function queryText(customer) {
@@ -308,21 +308,21 @@ function filteredCustomers() {
   const stageOwner = els.stageOwnerFilter.value;
   const customerOwner = els.customerOwnerFilter.value;
   const status = els.statusFilter.value;
-  const source = els.sourceFilter.value;
+  const boosterMonth = els.sourceFilter.value;
   const selectedOwner = activeView === "pipeline" ? stageOwner : activeView === "customers" ? customerOwner : owner;
 
   return state.customers.filter((customer) => {
     if (search && !queryText(customer).includes(search)) return false;
     if (selectedOwner !== "all" && customer.owner !== selectedOwner) return false;
     if (status !== "all" && customer.status !== status) return false;
-    if (source !== "all" && customer.source !== source) return false;
+    if (boosterMonth !== "all" && customer.stage !== boosterMonth) return false;
     return true;
   });
 }
 
 function renderSelectOptions() {
   const owners = getOwners();
-  const sources = getSources();
+  const boosterMonths = getCustomerStages();
 
   [els.ownerFilter, els.stageOwnerFilter, els.customerOwnerFilter, els.activityOwnerFilter].forEach((select) => {
     const current = select.value;
@@ -333,15 +333,15 @@ function renderSelectOptions() {
     select.value = owners.includes(current) ? current : "all";
   });
 
-  const currentSource = els.sourceFilter.value;
-  els.sourceFilter.innerHTML = '<option value="all">全部 Batch</option>';
-  sources.forEach((source) => {
+  const currentBoosterMonth = els.sourceFilter.value;
+  els.sourceFilter.innerHTML = '<option value="all">全部 Booster 月份</option>';
+  boosterMonths.forEach((boosterMonth) => {
     els.sourceFilter.insertAdjacentHTML(
       "beforeend",
-      `<option value="${escapeHtml(source)}">${escapeHtml(source)}</option>`
+      `<option value="${escapeHtml(boosterMonth)}">${escapeHtml(boosterMonth)}</option>`
     );
   });
-  els.sourceFilter.value = sources.includes(currentSource) ? currentSource : "all";
+  els.sourceFilter.value = boosterMonths.includes(currentBoosterMonth) ? currentBoosterMonth : "all";
 
   const statusFilter = els.statusFilter;
   const currentStatusFilter = statusFilter.value;
@@ -557,7 +557,7 @@ function renderCustomerTable() {
   const customers = filteredCustomers();
 
   if (!customers.length) {
-    table.innerHTML = '<tr><td colspan="8"><div class="empty-state">没有符合条件的客户。</div></td></tr>';
+    table.innerHTML = '<tr><td colspan="7"><div class="empty-state">没有符合条件的客户。</div></td></tr>';
     return;
   }
 
@@ -571,7 +571,6 @@ function renderCustomerTable() {
             <div class="customer-meta">${escapeHtml(customer.email || "无邮箱")}</div>
           </td>
           <td>${escapeHtml(customer.phone)}</td>
-          <td>${escapeHtml(customer.source)}</td>
           <td><span class="status-pill" style="background:${escapeHtml(status.color)};color:${contrastText(status.color)}">${escapeHtml(customer.status)}</span></td>
           <td>${escapeHtml(customer.owner)}</td>
           <td>${escapeHtml(customer.stage)}</td>
