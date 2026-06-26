@@ -40,8 +40,10 @@ const els = {
   customerDialog: document.querySelector("#customerDialog"),
   activityDialog: document.querySelector("#activityDialog"),
   editUserDialog: document.querySelector("#editUserDialog"),
+  changePasswordDialog: document.querySelector("#changePasswordDialog"),
   customerForm: document.querySelector("#customerForm"),
   activityForm: document.querySelector("#activityForm"),
+  changePasswordForm: document.querySelector("#changePasswordForm"),
   userForm: document.querySelector("#userForm"),
   settingsForm: document.querySelector("#settingsForm"),
   statusBanner: document.querySelector("#statusBanner"),
@@ -629,7 +631,7 @@ function renderUsers() {
         <div class="user-row">
           <div>
             <strong>${escapeHtml(user.displayName)}</strong>
-            <div class="owner-meta">@${escapeHtml(user.username)} · ${user.role === "admin" ? "管理员" : "销售"} · ${escapeHtml(user.ownerName || "-")}</div>
+            <div class="owner-meta">@${escapeHtml(user.username)} · ${user.role === "admin" ? "管理员" : "销售"}</div>
             ${user.role === "sales" ? `<div class="owner-meta">KPI ${money(user.monthlyTarget || settings.monthTarget)}</div>` : ""}
           </div>
           <div class="user-actions">
@@ -798,14 +800,13 @@ async function createUser() {
     username: document.querySelector("#newUsername").value.trim(),
     displayName: document.querySelector("#newDisplayName").value.trim(),
     role: document.querySelector("#newRole").value,
-    ownerName: document.querySelector("#newOwnerName").value.trim(),
+    ownerName: document.querySelector("#newDisplayName").value.trim(),
     password: document.querySelector("#newPassword").value,
     monthlyTarget: parseAmount(document.querySelector("#newMonthlyTarget").value)
   };
   if (users.some((user) => user.username.toLowerCase() === payload.username.toLowerCase())) {
     throw new Error(`用户名 ${payload.username} 已经存在，请使用另一个用户名。`);
   }
-  if (payload.role === "sales" && !payload.ownerName) payload.ownerName = payload.displayName;
   await api("/api/users", {
     method: "POST",
     body: JSON.stringify(payload)
@@ -823,7 +824,6 @@ function openEditUser(id) {
   document.querySelector("#editUsername").disabled = user.id === currentUser.id;
   document.querySelector("#editDisplayName").value = user.displayName;
   document.querySelector("#editRole").value = user.role;
-  document.querySelector("#editOwnerName").value = user.ownerName || user.displayName;
   document.querySelector("#editMonthlyTarget").value = formatAmount(
     user.monthlyTarget || settings.monthTarget
   );
@@ -846,7 +846,7 @@ async function saveEditedUser() {
     username: document.querySelector("#editUsername").value.trim(),
     displayName: document.querySelector("#editDisplayName").value.trim(),
     role: document.querySelector("#editRole").value,
-    ownerName: document.querySelector("#editOwnerName").value.trim(),
+    ownerName: document.querySelector("#editDisplayName").value.trim(),
     monthlyTarget: parseAmount(document.querySelector("#editMonthlyTarget").value),
     password: document.querySelector("#editPassword").value
   };
@@ -857,6 +857,34 @@ async function saveEditedUser() {
   els.editUserDialog.close();
   showStatus(`账号 ${payload.username} 已更新。`);
   await loadState();
+}
+
+function openChangePassword() {
+  els.changePasswordForm.reset();
+  document.querySelector("#changePasswordError").hidden = true;
+  els.changePasswordDialog.showModal();
+  document.querySelector("#currentPassword").focus();
+}
+
+async function changeOwnPassword() {
+  const currentPassword = document.querySelector("#currentPassword").value;
+  const newPassword = document.querySelector("#newSelfPassword").value;
+  const confirmPassword = document.querySelector("#confirmSelfPassword").value;
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    throw new Error("请填写现在的密码和新密码。");
+  }
+  if (newPassword.length < 6) {
+    throw new Error("新密码至少需要 6 个字符。");
+  }
+  if (newPassword !== confirmPassword) {
+    throw new Error("两次输入的新密码不一样。");
+  }
+  await api("/api/change-password", {
+    method: "POST",
+    body: JSON.stringify({ currentPassword, newPassword })
+  });
+  els.changePasswordDialog.close();
+  showStatus("密码已更新，下次登录请使用新密码。");
 }
 
 async function deleteUser(id) {
@@ -948,6 +976,8 @@ document.querySelector("#logoutButton").addEventListener("click", async () => {
   await api("/api/logout", { method: "POST" });
   showLogin();
 });
+
+document.querySelector("#changePasswordButton").addEventListener("click", openChangePassword);
 
 els.navItems.forEach((item) => {
   item.addEventListener("click", () => setView(item.dataset.view));
@@ -1070,6 +1100,18 @@ document.querySelector("#editUserForm").addEventListener("submit", async (event)
   error.hidden = true;
   try {
     await saveEditedUser();
+  } catch (exception) {
+    error.textContent = `保存失败：${exception.message}`;
+    error.hidden = false;
+  }
+});
+
+els.changePasswordForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const error = document.querySelector("#changePasswordError");
+  error.hidden = true;
+  try {
+    await changeOwnPassword();
   } catch (exception) {
     error.textContent = `保存失败：${exception.message}`;
     error.hidden = false;

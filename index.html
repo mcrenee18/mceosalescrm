@@ -89,6 +89,7 @@
               <span id="currentUserLabel">-</span>
               <small id="currentRoleLabel">-</small>
             </div>
+            <button id="changePasswordButton" class="ghost-button" type="button">修改密码</button>
             <button id="logoutButton" class="ghost-button" type="button">退出</button>
           </div>
         </header>
@@ -231,10 +232,6 @@
                     <option value="sales">销售</option>
                     <option value="admin">管理员</option>
                   </select>
-                </label>
-                <label>
-                  对应负责人
-                  <input id="newOwnerName" placeholder="例如 Mei / Jason" />
                 </label>
                 <label>
                   临时密码
@@ -467,10 +464,6 @@
             </select>
           </label>
           <label>
-            对应负责人
-            <input id="editOwnerName" required />
-          </label>
-          <label>
             每月 KPI（RM）
             <input id="editMonthlyTarget" class="amount-input" inputmode="decimal" />
           </label>
@@ -483,6 +476,37 @@
         <div class="modal-actions">
           <button class="ghost-button" type="button" data-close-dialog>取消</button>
           <button class="primary-button" type="submit">保存账号</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="changePasswordDialog" class="modal account-modal">
+      <form id="changePasswordForm" novalidate>
+        <div class="modal-heading">
+          <div>
+            <p class="eyebrow">Security</p>
+            <h3>修改密码</h3>
+          </div>
+          <button class="icon-button" aria-label="关闭" type="button" data-close-dialog>×</button>
+        </div>
+        <div class="form-grid">
+          <label class="full-field">
+            现在的密码
+            <input id="currentPassword" type="password" autocomplete="current-password" required />
+          </label>
+          <label>
+            新密码
+            <input id="newSelfPassword" type="password" autocomplete="new-password" required />
+          </label>
+          <label>
+            确认新密码
+            <input id="confirmSelfPassword" type="password" autocomplete="new-password" required />
+          </label>
+        </div>
+        <p id="changePasswordError" class="form-error" hidden></p>
+        <div class="modal-actions">
+          <button class="ghost-button" type="button" data-close-dialog>取消</button>
+          <button class="primary-button" type="submit">保存新密码</button>
         </div>
       </form>
     </dialog>

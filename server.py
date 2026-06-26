@@ -736,6 +736,9 @@ class CRMHandler(SimpleHTTPRequestHandler):
             if path == "/api/logout":
                 self.logout()
                 return
+            if path == "/api/change-password":
+                self.change_password(read_json(self))
+                return
             if path == "/api/customers":
                 user = self.current_user()
                 customer = normalize_customer(read_json(self))
@@ -880,6 +883,29 @@ class CRMHandler(SimpleHTTPRequestHandler):
             with db() as conn:
                 conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
         self.send_json({"ok": True}, headers=[self.expired_cookie()])
+
+    def change_password(self, payload: dict) -> None:
+        user = self.current_user()
+        current_password = str(payload.get("currentPassword") or "")
+        new_password = str(payload.get("newPassword") or "")
+        if not current_password or len(new_password) < 6:
+            raise ValueError("Password is missing or too short")
+
+        token = self.session_token()
+        with db() as conn:
+            row = conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
+            if not row or not verify_password(current_password, row["password_salt"], row["password_hash"]):
+                raise PermissionError("Invalid current password")
+            salt, password_hash = hash_password(new_password)
+            conn.execute(
+                "UPDATE users SET password_salt = ?, password_hash = ? WHERE id = ?",
+                (salt, password_hash, user["id"]),
+            )
+            conn.execute(
+                "DELETE FROM sessions WHERE user_id = ? AND token <> ?",
+                (user["id"], token or ""),
+            )
+        self.send_json({"ok": True})
 
     def current_user(self, required: bool = True) -> dict | None:
         token = self.session_token()
