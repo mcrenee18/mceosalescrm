@@ -522,13 +522,13 @@ function renderKanban() {
       const deals = customers.filter((customer) => customer.stage === stage);
       const collapsed = collapsedKanbanStages.has(stage);
       return `
-        <section class="kanban-column ${collapsed ? "is-collapsed" : ""}">
+        <section class="kanban-column ${collapsed ? "is-compact" : ""}">
           <div class="column-heading">
             <span>${escapeHtml(stage)}</span>
             <div class="column-heading-actions">
               <span class="count-pill">${deals.length}</span>
               <button class="collapse-button" type="button" data-toggle-stage="${escapeHtml(stage)}" aria-expanded="${String(!collapsed)}">
-                ${collapsed ? "展开" : "缩小"}
+                ${collapsed ? "详细" : "简洁"}
               </button>
             </div>
           </div>
@@ -565,9 +565,10 @@ function renderKanban() {
 function renderCustomerTable() {
   const table = document.querySelector("#customerTable");
   const customers = filteredCustomers();
+  const showDealValue = currentUser.role === "admin";
 
   if (!customers.length) {
-    table.innerHTML = '<tr><td colspan="7"><div class="empty-state">没有符合条件的客户。</div></td></tr>';
+    table.innerHTML = `<tr><td colspan="${showDealValue ? 8 : 7}"><div class="empty-state">没有符合条件的客户。</div></td></tr>`;
     return;
   }
 
@@ -585,6 +586,7 @@ function renderCustomerTable() {
           <td>${escapeHtml(customer.owner)}</td>
           <td>${escapeHtml(customer.stage)}</td>
           <td>${escapeHtml(customer.nextFollowUp)}</td>
+          ${showDealValue ? `<td>${isWonStatus(customer.status) ? money(customer.dealValue || 0) : "-"}</td>` : ""}
           <td>
             <div class="table-actions">
               <button type="button" data-edit="${escapeHtml(customer.id)}">编辑</button>
@@ -635,7 +637,7 @@ function renderActivities() {
           <header class="activity-group-header">
             <div>
               <strong>${escapeHtml(customer?.name || "未知客户")}</strong>
-              <div class="activity-meta">${escapeHtml(customer?.owner || customerActivities[0]?.owner || "-")} · ${customerActivities.length} 条跟进 · 最新 ${escapeHtml(latestDate)}</div>
+              <div class="activity-meta">负责人 ${escapeHtml(customer?.owner || customerActivities[0]?.owner || "-")} · ${customerActivities.length} 条跟进 · 最新 update ${escapeHtml(latestDate)}</div>
             </div>
             <div class="activity-group-actions">
               <button class="collapse-button" type="button" data-toggle-activity-customer="${escapeHtml(customerId)}" aria-expanded="${String(!collapsed)}">

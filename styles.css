@@ -712,8 +712,7 @@ textarea {
   gap: 10px;
 }
 
-.activity-group.is-collapsed .activity-group-list,
-.kanban-column.is-collapsed .kanban-column-body {
+.activity-group.is-collapsed .activity-group-list {
   display: none;
 }
 
@@ -804,6 +803,23 @@ textarea {
   border-left-width: 5px;
   border-left-style: solid;
   border-left-color: var(--primary);
+}
+
+.kanban-column.is-compact .deal-card {
+  padding: 9px 10px;
+}
+
+.kanban-column.is-compact .deal-details {
+  margin-top: 6px;
+  gap: 2px;
+}
+
+.kanban-column.is-compact .deal-details div {
+  grid-template-columns: 58px minmax(0, 1fr);
+}
+
+.kanban-column.is-compact .deal-actions {
+  display: none;
 }
 
 .deal-card header {
