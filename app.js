@@ -40,7 +40,6 @@ const els = {
   customerDialog: document.querySelector("#customerDialog"),
   activityDialog: document.querySelector("#activityDialog"),
   editUserDialog: document.querySelector("#editUserDialog"),
-  changePasswordDialog: document.querySelector("#changePasswordDialog"),
   customerForm: document.querySelector("#customerForm"),
   activityForm: document.querySelector("#activityForm"),
   changePasswordForm: document.querySelector("#changePasswordForm"),
@@ -654,7 +653,7 @@ function render() {
 }
 
 function setView(view) {
-  if (["accounts", "settings"].includes(view) && currentUser.role !== "admin") view = "dashboard";
+  if (view === "accounts" && currentUser.role !== "admin") view = "dashboard";
   activeView = view;
   const titles = {
     dashboard: "Dashboard",
@@ -859,13 +858,6 @@ async function saveEditedUser() {
   await loadState();
 }
 
-function openChangePassword() {
-  els.changePasswordForm.reset();
-  document.querySelector("#changePasswordError").hidden = true;
-  els.changePasswordDialog.showModal();
-  document.querySelector("#currentPassword").focus();
-}
-
 async function changeOwnPassword() {
   const currentPassword = document.querySelector("#currentPassword").value;
   const newPassword = document.querySelector("#newSelfPassword").value;
@@ -883,7 +875,7 @@ async function changeOwnPassword() {
     method: "POST",
     body: JSON.stringify({ currentPassword, newPassword })
   });
-  els.changePasswordDialog.close();
+  els.changePasswordForm.reset();
   showStatus("密码已更新，下次登录请使用新密码。");
 }
 
@@ -976,8 +968,6 @@ document.querySelector("#logoutButton").addEventListener("click", async () => {
   await api("/api/logout", { method: "POST" });
   showLogin();
 });
-
-document.querySelector("#changePasswordButton").addEventListener("click", openChangePassword);
 
 els.navItems.forEach((item) => {
   item.addEventListener("click", () => setView(item.dataset.view));

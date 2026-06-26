@@ -56,7 +56,7 @@
           <button class="nav-item" data-view="customers">客户与线索</button>
           <button class="nav-item" data-view="activities">跟进记录</button>
           <button class="nav-item admin-only" data-view="accounts">团队账号</button>
-          <button class="nav-item admin-only" data-view="settings">系统设置</button>
+          <button class="nav-item" data-view="settings">系统设置</button>
         </nav>
 
         <div class="sidebar-panel">
@@ -89,7 +89,6 @@
               <span id="currentUserLabel">-</span>
               <small id="currentRoleLabel">-</small>
             </div>
-            <button id="changePasswordButton" class="ghost-button" type="button">修改密码</button>
             <button id="logoutButton" class="ghost-button" type="button">退出</button>
           </div>
         </header>
@@ -259,6 +258,31 @@
 
         <section id="settingsView" class="view">
           <section class="work-section settings-section">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Security</p>
+                <h3>修改密码</h3>
+              </div>
+            </div>
+            <form id="changePasswordForm" class="settings-form" novalidate>
+              <label>
+                现在的密码
+                <input id="currentPassword" type="password" autocomplete="current-password" required />
+              </label>
+              <label>
+                新密码
+                <input id="newSelfPassword" type="password" autocomplete="new-password" required />
+              </label>
+              <label>
+                确认新密码
+                <input id="confirmSelfPassword" type="password" autocomplete="new-password" required />
+              </label>
+              <p id="changePasswordError" class="form-error full-field" hidden></p>
+              <button class="primary-button" type="submit">保存新密码</button>
+            </form>
+          </section>
+
+          <section class="work-section settings-section admin-only">
             <div class="section-heading">
               <div>
                 <p class="eyebrow">Customization</p>
@@ -476,37 +500,6 @@
         <div class="modal-actions">
           <button class="ghost-button" type="button" data-close-dialog>取消</button>
           <button class="primary-button" type="submit">保存账号</button>
-        </div>
-      </form>
-    </dialog>
-
-    <dialog id="changePasswordDialog" class="modal account-modal">
-      <form id="changePasswordForm" novalidate>
-        <div class="modal-heading">
-          <div>
-            <p class="eyebrow">Security</p>
-            <h3>修改密码</h3>
-          </div>
-          <button class="icon-button" aria-label="关闭" type="button" data-close-dialog>×</button>
-        </div>
-        <div class="form-grid">
-          <label class="full-field">
-            现在的密码
-            <input id="currentPassword" type="password" autocomplete="current-password" required />
-          </label>
-          <label>
-            新密码
-            <input id="newSelfPassword" type="password" autocomplete="new-password" required />
-          </label>
-          <label>
-            确认新密码
-            <input id="confirmSelfPassword" type="password" autocomplete="new-password" required />
-          </label>
-        </div>
-        <p id="changePasswordError" class="form-error" hidden></p>
-        <div class="modal-actions">
-          <button class="ghost-button" type="button" data-close-dialog>取消</button>
-          <button class="primary-button" type="submit">保存新密码</button>
         </div>
       </form>
     </dialog>
