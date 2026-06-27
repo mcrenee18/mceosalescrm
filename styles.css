@@ -1023,18 +1023,27 @@ label {
 .activity-photos a {
   display: block;
   width: 72px;
-  height: 72px;
   border: 1px solid var(--line);
   border-radius: 6px;
   overflow: hidden;
   background: #ffffff;
+  color: var(--muted);
+  text-decoration: none;
 }
 
 .activity-photos img {
   width: 100%;
-  height: 100%;
+  height: 72px;
   object-fit: cover;
   display: block;
+}
+
+.activity-photos span {
+  display: block;
+  padding: 3px 4px 4px;
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: center;
 }
 
 .empty-state {

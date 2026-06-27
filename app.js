@@ -416,10 +416,10 @@ function renderDashboard() {
   const monthlyWon = customers.filter(
     (customer) => isWonStatus(customer.status) && customer.expectedClose.startsWith(currentMonth)
   );
-  const monthlySales = monthlyWon.reduce((sum, customer) => sum + Number(customer.dealValue || 0), 0);
+  const monthlyCollected = monthlyWon.reduce((sum, customer) => sum + Number(customer.collectedAmount || 0), 0);
 
   document.querySelector("#metricCustomers").textContent = customers.length;
-  document.querySelector("#metricMonthlySales").textContent = money(monthlySales);
+  document.querySelector("#metricMonthlySales").textContent = money(monthlyCollected);
   document.querySelector("#metricMonthlyWon").textContent = monthlyWon.length;
   document.querySelector("#metricDue").textContent = dueToday.length;
 
@@ -427,12 +427,12 @@ function renderDashboard() {
     currentUser.role === "sales"
       ? Number(settings.ownerTargets[currentUser.ownerName] || settings.monthTarget)
       : Number(settings.monthTarget);
-  const progress = Math.min(Math.round((monthlySales / dashboardTarget) * 100), 100);
-  const remaining = Math.max(dashboardTarget - monthlySales, 0);
+  const progress = Math.min(Math.round((monthlyCollected / dashboardTarget) * 100), 100);
+  const remaining = Math.max(dashboardTarget - monthlyCollected, 0);
   document.querySelector("#targetProgress").style.width = `${progress}%`;
   document.querySelector("#monthTarget").textContent = money(remaining);
   document.querySelector("#targetCopy").textContent =
-    `目标 ${money(dashboardTarget)} · 已完成 ${money(monthlySales)}（${progress}%）`;
+    `Collected 目标 ${money(dashboardTarget)} · 已收 ${money(monthlyCollected)}（${progress}%）`;
 
   renderTeamList();
   renderDueList(dueToday);
@@ -466,9 +466,9 @@ function renderTeamList() {
       const ownerWon = owned.filter(
         (customer) => isWonStatus(customer.status) && customer.expectedClose.startsWith(todayISO().slice(0, 7))
       );
-      const ownerSales = ownerWon.reduce((sum, customer) => sum + Number(customer.dealValue || 0), 0);
+      const ownerCollected = ownerWon.reduce((sum, customer) => sum + Number(customer.collectedAmount || 0), 0);
       const ownerTarget = Number(settings.ownerTargets[owner] || settings.monthTarget);
-      const percent = Math.min(Math.round((ownerSales / ownerTarget) * 100), 100);
+      const percent = Math.min(Math.round((ownerCollected / ownerTarget) * 100), 100);
 
       return `
         <div class="team-row">
@@ -478,7 +478,7 @@ function renderTeamList() {
           </div>
           <div>
             <div class="mini-progress"><span style="width:${percent}%"></span></div>
-            <div class="owner-meta">${money(ownerSales)} / KPI ${money(ownerTarget)} · ${ownerActivities} 条跟进</div>
+            <div class="owner-meta">Collected ${money(ownerCollected)} / KPI ${money(ownerTarget)} · ${ownerActivities} 条跟进</div>
           </div>
           <strong>${percent}%</strong>
         </div>
@@ -565,10 +565,9 @@ function renderKanban() {
 function renderCustomerTable() {
   const table = document.querySelector("#customerTable");
   const customers = filteredCustomers();
-  const showDealValue = currentUser.role === "admin";
 
   if (!customers.length) {
-    table.innerHTML = `<tr><td colspan="${showDealValue ? 8 : 7}"><div class="empty-state">没有符合条件的客户。</div></td></tr>`;
+    table.innerHTML = '<tr><td colspan="9"><div class="empty-state">没有符合条件的客户。</div></td></tr>';
     return;
   }
 
@@ -586,7 +585,8 @@ function renderCustomerTable() {
           <td>${escapeHtml(customer.owner)}</td>
           <td>${escapeHtml(customer.stage)}</td>
           <td>${escapeHtml(customer.nextFollowUp)}</td>
-          ${showDealValue ? `<td>${isWonStatus(customer.status) ? money(customer.dealValue || 0) : "-"}</td>` : ""}
+          <td>${isWonStatus(customer.status) ? money(customer.dealValue || 0) : "-"}</td>
+          <td>${isWonStatus(customer.status) ? money(customer.collectedAmount || 0) : "-"}</td>
           <td>
             <div class="table-actions">
               <button type="button" data-edit="${escapeHtml(customer.id)}">编辑</button>
@@ -654,7 +654,7 @@ function renderActivities() {
                     <strong>${escapeHtml(activity.date)} · ${escapeHtml(activity.type)}</strong>
                     <div class="activity-meta">${escapeHtml(activity.owner)}</div>
                     <p>${escapeHtml(activity.note || "只有照片，没有文字备注。")}</p>
-                    ${activityPhotosHtml(activity.attachments)}
+                    ${activityPhotosHtml(activity.attachments, activity.date)}
                   </div>
                 `
               )
@@ -683,7 +683,7 @@ function renderUsers() {
           <div>
             <strong>${escapeHtml(user.displayName)}</strong>
             <div class="owner-meta">@${escapeHtml(user.username)} · ${user.role === "admin" ? "管理员" : "销售"}</div>
-            ${user.role === "sales" ? `<div class="owner-meta">KPI ${money(user.monthlyTarget || settings.monthTarget)}</div>` : ""}
+            ${user.role === "sales" ? `<div class="owner-meta">Collected KPI ${money(user.monthlyTarget || settings.monthTarget)}</div>` : ""}
           </div>
           <div class="user-actions">
             <button class="ghost-button" type="button" data-edit-user="${escapeHtml(user.id)}">编辑</button>
@@ -734,6 +734,7 @@ function openCustomerForm(id) {
     customer?.owner || (currentUser.role === "sales" ? currentUser.ownerName : getOwners()[0] || "");
   document.querySelector("#dealStage").value = customer?.stage || settings.stages[0];
   document.querySelector("#dealValue").value = formatAmount(customer?.dealValue || 0);
+  document.querySelector("#collectedAmount").value = formatAmount(customer?.collectedAmount || 0);
   document.querySelector("#expectedClose").value = customer?.expectedClose || todayISO();
   document.querySelector("#boosterComment").value = customer?.boosterComment || "";
   document.querySelector("#nextFollowUp").value = customer?.nextFollowUp || todayISO();
@@ -773,7 +774,7 @@ function renderCustomerHistory(customerId) {
               <strong>${escapeHtml(activity.date)} · ${escapeHtml(activity.type)}</strong>
               <span>${escapeHtml(activity.owner)}</span>
               <p>${escapeHtml(activity.note)}</p>
-              ${activityPhotosHtml(activity.attachments)}
+              ${activityPhotosHtml(activity.attachments, activity.date)}
             </article>
           `
         )
@@ -797,10 +798,16 @@ function openActivityForm(customerId = "") {
 function updateDealValueVisibility() {
   const won = isWonStatus(document.querySelector("#customerStatus").value);
   const field = document.querySelector("#dealValueField");
+  const collectedField = document.querySelector("#collectedAmountField");
   const input = document.querySelector("#dealValue");
+  const collectedInput = document.querySelector("#collectedAmount");
   field.hidden = !won;
+  collectedField.hidden = !won;
   input.required = won;
-  if (!won) input.value = formatAmount(0);
+  if (!won) {
+    input.value = formatAmount(0);
+    collectedInput.value = formatAmount(0);
+  }
 }
 
 async function deleteCustomer(id) {
@@ -1078,15 +1085,16 @@ function updateAttachmentPreview(inputSelector, previewSelector) {
   preview.textContent = `已选择 ${files.length} 张：${files.map((file) => file.name).join("、")}`;
 }
 
-function activityPhotosHtml(attachments = []) {
+function activityPhotosHtml(attachments = [], date = "") {
   if (!attachments.length) return "";
   return `
     <div class="activity-photos">
       ${attachments
         .map(
           (photo) => `
-            <a href="${photo.dataUrl}" target="_blank" rel="noopener" title="${escapeHtml(photo.name)}">
+            <a href="${photo.dataUrl}" target="_blank" rel="noopener" title="${escapeHtml(date ? `${date} · ${photo.name}` : photo.name)}">
               <img src="${photo.dataUrl}" alt="${escapeHtml(photo.name)}" loading="lazy" />
+              ${date ? `<span>${escapeHtml(date)}</span>` : ""}
             </a>
           `
         )
@@ -1358,6 +1366,9 @@ els.customerForm.addEventListener("submit", async (event) => {
       owner: document.querySelector("#customerOwner").value.trim(),
       dealValue: isWonStatus(document.querySelector("#customerStatus").value)
         ? parseAmount(document.querySelector("#dealValue").value)
+        : 0,
+      collectedAmount: isWonStatus(document.querySelector("#customerStatus").value)
+        ? parseAmount(document.querySelector("#collectedAmount").value)
         : 0,
       stage: document.querySelector("#dealStage").value,
       expectedClose: document.querySelector("#expectedClose").value,

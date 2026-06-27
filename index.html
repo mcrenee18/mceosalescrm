@@ -60,7 +60,7 @@
         </nav>
 
         <div class="sidebar-panel">
-          <span class="panel-label">距离目标还差</span>
+          <span class="panel-label">距离 Collected 目标还差</span>
           <strong id="monthTarget">RM 180,000</strong>
           <div class="progress-track" aria-hidden="true">
             <div id="targetProgress" class="progress-fill"></div>
@@ -99,9 +99,9 @@
               <p>包含客户与潜在客户</p>
             </article>
             <article class="metric-card">
-              <span>本月成交金额</span>
+              <span>本月 Collected Amount</span>
               <strong id="metricMonthlySales">RM 0</strong>
-              <p>只计算本月已成交</p>
+              <p>只计算本月已成交的 collected amount</p>
             </article>
             <article class="metric-card">
               <span>本月已成交</span>
@@ -182,7 +182,8 @@
                   <th>负责人</th>
                   <th>Booster 月份</th>
                   <th>下次跟进</th>
-                  <th class="admin-only">成交数额</th>
+                  <th>Sales Amount</th>
+                  <th>Collected Amount</th>
                   <th>操作</th>
                 </tr>
               </thead>
@@ -239,7 +240,7 @@
                   <input id="newPassword" type="password" autocomplete="new-password" required />
                 </label>
                 <label>
-                  每月 KPI（RM）
+                  每月 Collected KPI（RM）
                   <input id="newMonthlyTarget" class="amount-input" inputmode="decimal" required />
                 </label>
                 <button class="primary-button" type="submit">创建账号</button>
@@ -327,7 +328,7 @@
                 <p class="settings-note">建议使用正方形 PNG/WebP，文件小于 1 MB。</p>
               </div>
               <label>
-                每月销售目标（RM）
+                每月 Collected 目标（RM）
                 <input id="settingMonthTarget" class="amount-input" inputmode="decimal" required />
               </label>
               <label class="full-field">
@@ -387,6 +388,10 @@
           <label id="dealValueField" hidden>
             Sales Amount（RM）
             <input id="dealValue" class="amount-input" inputmode="decimal" />
+          </label>
+          <label id="collectedAmountField" hidden>
+            Collected Amount（RM）
+            <input id="collectedAmount" class="amount-input" inputmode="decimal" />
           </label>
           <label>
             负责人
@@ -519,7 +524,7 @@
             </select>
           </label>
           <label>
-            每月 KPI（RM）
+            每月 Collected KPI（RM）
             <input id="editMonthlyTarget" class="amount-input" inputmode="decimal" />
           </label>
           <label>

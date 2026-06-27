@@ -226,6 +226,7 @@ def init_db() -> None:
                 status TEXT NOT NULL,
                 owner TEXT NOT NULL,
                 deal_value REAL NOT NULL DEFAULT 0,
+                collected_value REAL NOT NULL DEFAULT 0,
                 stage TEXT NOT NULL,
                 expected_close TEXT NOT NULL,
                 next_follow_up TEXT NOT NULL,
@@ -297,6 +298,8 @@ def column_exists(conn, table: str, column: str) -> bool:
 
 
 def ensure_schema(conn) -> None:
+    if not column_exists(conn, "customers", "collected_value"):
+        conn.execute("ALTER TABLE customers ADD COLUMN collected_value REAL NOT NULL DEFAULT 0")
     if not column_exists(conn, "customers", "booster_comment"):
         conn.execute("ALTER TABLE customers ADD COLUMN booster_comment TEXT")
     if not column_exists(conn, "activities", "attachments"):
@@ -590,6 +593,7 @@ def normalize_customer(raw: dict) -> dict:
         "status": str(raw.get("status") or "潜在客户").strip(),
         "owner": str(raw.get("owner") or "").strip(),
         "dealValue": float(raw.get("dealValue") or raw.get("deal_value") or 0),
+        "collectedAmount": float(raw.get("collectedAmount") or raw.get("collected_amount") or raw.get("collected_value") or 0),
         "stage": str(raw.get("stage") or STAGES[0]).strip(),
         "expectedClose": str(raw.get("expectedClose") or raw.get("expected_close") or "").strip(),
         "boosterComment": str(raw.get("boosterComment") or raw.get("booster_comment") or "").strip(),
@@ -684,13 +688,13 @@ def replace_all(conn: sqlite3.Connection, data: dict) -> None:
         conn.execute(
             """
             INSERT INTO customers (
-                id, name, phone, email, source, status, owner, deal_value, stage,
+                id, name, phone, email, source, status, owner, deal_value, collected_value, stage,
                 expected_close, booster_comment, next_follow_up, note, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 customer["id"], customer["name"], customer["phone"], customer["email"], customer["source"],
-                customer["status"], customer["owner"], customer["dealValue"], customer["stage"],
+                customer["status"], customer["owner"], customer["dealValue"], customer["collectedAmount"], customer["stage"],
                 customer["expectedClose"], customer["boosterComment"], customer["nextFollowUp"],
                 customer["note"], timestamp, timestamp,
             ),
@@ -734,7 +738,7 @@ def read_state(user: dict) -> dict:
         {
             "id": row["id"], "name": row["name"], "phone": row["phone"], "email": row["email"],
             "source": row["source"], "status": row["status"], "owner": row["owner"],
-            "dealValue": row["deal_value"], "stage": row["stage"],
+            "dealValue": row["deal_value"], "collectedAmount": row["collected_value"], "stage": row["stage"],
             "expectedClose": row["expected_close"], "boosterComment": row["booster_comment"] or "",
             "nextFollowUp": row["next_follow_up"], "note": row["note"],
         }
@@ -824,6 +828,7 @@ class CRMHandler(SimpleHTTPRequestHandler):
                 is_won = status_definitions[customer["status"]]["isWon"] or "成交" in customer["status"]
                 if not is_won:
                     customer["dealValue"] = 0
+                    customer["collectedAmount"] = 0
                 elif customer["dealValue"] <= 0:
                     raise ValueError("Sales Amount is required for a won customer")
                 if not can_access_owner(user, customer["owner"]):
@@ -1025,20 +1030,20 @@ class CRMHandler(SimpleHTTPRequestHandler):
             conn.execute(
                 """
                 INSERT INTO customers (
-                    id, name, phone, email, source, status, owner, deal_value, stage,
+                    id, name, phone, email, source, status, owner, deal_value, collected_value, stage,
                     expected_close, booster_comment, next_follow_up, note, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name, phone = excluded.phone, email = excluded.email,
                     source = excluded.source, status = excluded.status, owner = excluded.owner,
-                    deal_value = excluded.deal_value, stage = excluded.stage,
+                    deal_value = excluded.deal_value, collected_value = excluded.collected_value, stage = excluded.stage,
                     expected_close = excluded.expected_close, booster_comment = excluded.booster_comment,
                     next_follow_up = excluded.next_follow_up, note = excluded.note,
                     updated_at = excluded.updated_at
                 """,
                 (
                     customer["id"], customer["name"], customer["phone"], customer["email"], customer["source"],
-                    customer["status"], customer["owner"], customer["dealValue"], customer["stage"],
+                    customer["status"], customer["owner"], customer["dealValue"], customer["collectedAmount"], customer["stage"],
                     customer["expectedClose"], customer["boosterComment"], customer["nextFollowUp"],
                     customer["note"], created_at, timestamp,
                 ),
