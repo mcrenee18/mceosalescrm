@@ -752,7 +752,13 @@ def read_state(user: dict) -> dict:
         }
         for row in activity_rows
     ]
-    return {"customers": customers, "activities": activities, "user": user, "settings": settings}
+    return {
+        "customers": customers,
+        "activities": activities,
+        "user": user,
+        "settings": settings,
+        "meta": {"database": "postgres" if DATABASE_URL else "sqlite"},
+    }
 
 
 def read_json(handler: SimpleHTTPRequestHandler) -> dict:

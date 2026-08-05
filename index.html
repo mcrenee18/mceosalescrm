@@ -33,7 +33,7 @@
         </label>
         <p id="loginError" class="login-error" hidden></p>
         <button class="primary-button" type="submit">登录</button>
-        <p class="login-hint">管理员用户名默认为 admin，密码使用 Render 的 CRM_ADMIN_PASSWORD。</p>
+        <p class="login-hint">本地测试默认：admin / admin123。云端版本使用 Render 的 CRM_ADMIN_PASSWORD。</p>
       </form>
     </section>
 
@@ -55,6 +55,7 @@
           <button class="nav-item" data-view="pipeline">销售看板</button>
           <button class="nav-item" data-view="customers">客户状态</button>
           <button class="nav-item" data-view="activities">跟进记录</button>
+          <button class="nav-item" data-view="assistant">Closing Assistant</button>
           <button class="nav-item admin-only" data-view="accounts">团队账号</button>
           <button class="nav-item" data-view="settings">系统设置</button>
         </nav>
@@ -72,7 +73,7 @@
       <main class="workspace">
         <header class="topbar">
           <div>
-            <p class="eyebrow">云端可部署 · SQLite 数据库 · 登录权限</p>
+            <p id="databaseStatus" class="eyebrow">云端可部署 · 正在检查数据库 · 登录权限</p>
             <h2 id="pageTitle">Dashboard</h2>
           </div>
           <div class="topbar-actions">
@@ -208,6 +209,63 @@
             </div>
           </div>
           <div id="activityTimeline" class="timeline"></div>
+        </section>
+
+        <section id="assistantView" class="view">
+          <div class="assistant-grid">
+            <section class="work-section assistant-input-panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Live Closing</p>
+                  <h3>顾客实时讲话</h3>
+                </div>
+                <div class="assistant-controls">
+                  <button id="assistantMicButton" class="small-button" type="button">开始听写</button>
+                  <button id="assistantSampleButton" class="small-button" type="button">试一句</button>
+                  <button id="assistantClearButton" class="ghost-button" type="button">清空</button>
+                </div>
+              </div>
+              <div class="assistant-context-row">
+                <label>
+                  客户
+                  <select id="assistantCustomer">
+                    <option value="">临时顾客</option>
+                  </select>
+                </label>
+                <label>
+                  回复风格
+                  <select id="assistantTone">
+                    <option value="warm">亲切顾问型</option>
+                    <option value="direct">直接成交型</option>
+                    <option value="premium">高端专业型</option>
+                  </select>
+                </label>
+              </div>
+              <label class="assistant-transcript-label">
+                Transcript / 顾客原话
+                <textarea id="assistantTranscript" rows="10" placeholder="例如：我觉得有点贵，我回去考虑一下，可能要问我老公先。"></textarea>
+              </label>
+              <label class="assistant-transcript-label">
+                BA Prompt / 产品重点
+                <textarea id="assistantPrompt" rows="5" placeholder="放你的 closing prompt、产品卖点、不能承诺的内容、promotion 条件等。"></textarea>
+              </label>
+              <p id="assistantMicStatus" class="assistant-note">输入顾客异议后右边会自动刷新。语音听写取决于浏览器是否支持。</p>
+            </section>
+
+            <section class="work-section assistant-output-panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">BA Cue Card</p>
+                  <h3>建议回复</h3>
+                </div>
+                <div class="assistant-controls">
+                  <button id="assistantCopyButton" class="small-button" type="button">复制回复</button>
+                  <button id="assistantSaveButton" class="primary-button" type="button">存为跟进</button>
+                </div>
+              </div>
+              <div id="assistantResult" class="assistant-result" aria-live="polite"></div>
+            </section>
+          </div>
         </section>
 
         <section id="accountsView" class="view">

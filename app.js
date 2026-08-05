@@ -55,6 +55,7 @@ const els = {
   userForm: document.querySelector("#userForm"),
   settingsForm: document.querySelector("#settingsForm"),
   statusBanner: document.querySelector("#statusBanner"),
+  databaseStatus: document.querySelector("#databaseStatus"),
   backupFile: document.querySelector("#backupFile"),
   currentUserLabel: document.querySelector("#currentUserLabel"),
   currentRoleLabel: document.querySelector("#currentRoleLabel"),
@@ -234,11 +235,21 @@ async function loadState() {
   state = await api("/api/state");
   settings = state.settings || settings;
   currentUser = state.user || currentUser;
+  renderDatabaseStatus(state.meta);
   applySettings();
   showApp();
   render();
   await offerLegacyMigration();
   if (currentUser.role === "admin") await loadUsers();
+}
+
+function renderDatabaseStatus(meta = {}) {
+  const databaseLabel = meta.database === "postgres"
+    ? "Cloud Database · PostgreSQL"
+    : "Local Database · SQLite";
+  if (els.databaseStatus) {
+    els.databaseStatus.textContent = `云端可部署 · ${databaseLabel} · 登录权限`;
+  }
 }
 
 function applySettings() {
