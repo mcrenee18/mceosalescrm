@@ -22,6 +22,9 @@ let users = [];
 let activeView = "dashboard";
 let draggedStatusIndex = null;
 let pendingLogoDataUrl = "";
+let assistantRecognition = null;
+let assistantListening = false;
+let assistantLastResult = null;
 const collapsedActivityCustomers = new Set();
 const collapsedKanbanStages = new Set();
 
@@ -54,7 +57,116 @@ const els = {
   statusBanner: document.querySelector("#statusBanner"),
   backupFile: document.querySelector("#backupFile"),
   currentUserLabel: document.querySelector("#currentUserLabel"),
-  currentRoleLabel: document.querySelector("#currentRoleLabel")
+  currentRoleLabel: document.querySelector("#currentRoleLabel"),
+  assistantCustomer: document.querySelector("#assistantCustomer"),
+  assistantTone: document.querySelector("#assistantTone"),
+  assistantTranscript: document.querySelector("#assistantTranscript"),
+  assistantPrompt: document.querySelector("#assistantPrompt"),
+  assistantResult: document.querySelector("#assistantResult"),
+  assistantMicButton: document.querySelector("#assistantMicButton"),
+  assistantSampleButton: document.querySelector("#assistantSampleButton"),
+  assistantClearButton: document.querySelector("#assistantClearButton"),
+  assistantCopyButton: document.querySelector("#assistantCopyButton"),
+  assistantSaveButton: document.querySelector("#assistantSaveButton"),
+  assistantMicStatus: document.querySelector("#assistantMicStatus")
+};
+
+const assistantRules = [
+  {
+    id: "price",
+    label: "价格/预算异议",
+    keywords: ["贵", "价钱", "价格", "budget", "expensive", "afford", "不值得", "太高", "没有钱", "分期", "便宜"],
+    reply: {
+      warm: "我明白，价格一定是要认真考虑的。通常会觉得贵，是因为还不确定它能不能解决你最在意的问题。我们先不急着决定，我想先确认：如果这个方案真的能帮你解决现在最困扰的部分，你会比较担心总价，还是付款安排？",
+      direct: "明白，价格是重点。我们先把钱放旁边，如果结果和支持都适合你，你最大卡点是预算，还是你还没看到这个方案的价值？",
+      premium: "我理解，高价值方案需要判断投资回报。我们可以先回到目标：你最想改善的结果是什么？如果方案对准这个目标，我再帮你看哪一个配套最合理。"
+    },
+    close: "如果我帮你把预算安排到比较舒服的方式，你今天可以先锁定这个方案吗？",
+    next: ["确认客户真正卡在总价还是付款方式", "回到客户最想解决的问题", "只说明已确认的配套和付款条件"]
+  },
+  {
+    id: "think",
+    label: "考虑/拖延异议",
+    keywords: ["考虑", "想一下", "回去想", "之后", "晚点", "下次", "再说", "think about", "consider", "later"],
+    reply: {
+      warm: "当然可以考虑。为了不要让你回去后越想越乱，我想先帮你整理一下：你现在最需要考虑的是价格、效果、时间，还是家人意见？",
+      direct: "可以，那我们先把考虑点讲清楚。你现在不能决定的主要原因是哪一个？我处理完这个点，你会不会比较容易做决定？",
+      premium: "没问题，好的决定需要清楚。我们先把你的顾虑拆开：目前是方案还不够清楚，还是你需要比较其他选择？"
+    },
+    close: "如果这个顾虑现在被解决，你会倾向今天开始，还是需要我安排一个明确 follow-up 时间？",
+    next: ["不要接受模糊的“考虑”", "问出具体考虑点", "约定下一步时间或决定条件"]
+  },
+  {
+    id: "partner",
+    label: "家人/Partner 决策",
+    keywords: ["老公", "老婆", "太太", "先生", "partner", "husband", "wife", "家人", "妈妈", "问他", "问她", "商量"],
+    reply: {
+      warm: "明白，重要决定跟家人商量是正常的。通常家人会问的是为什么需要、多少钱、有没有保障。我可以先帮你整理成简单三点，这样你回去比较容易解释。",
+      direct: "可以问家人。那我先确认一下：如果家人没有反对，你自己对这个方案是愿意开始的吗？",
+      premium: "当然可以。为了让沟通更有效，我建议我们先确认你个人的判断：你觉得这个方案适合你的地方和顾虑分别是什么？"
+    },
+    close: "如果我帮你准备一段给家人的说明，你愿意今天先保留名额/优惠，再回去确认吗？",
+    next: ["先确认客户本人的意愿", "给客户一段可转述的价值说明", "避免让 partner 变成无限拖延理由"]
+  },
+  {
+    id: "trust",
+    label: "信任/证明异议",
+    keywords: ["真的吗", "有效", "有没有用", "骗", "担心", "保障", "保证", "案例", "review", "trust", "proof", "results"],
+    reply: {
+      warm: "你的担心很合理，尤其是之前如果试过没有效果，就会更谨慎。我们不会乱保证结果，我可以先给你看适合你情况的案例和流程，让你判断这个方法是不是对。",
+      direct: "这个点要看证据，不靠感觉。我先给你看我们的流程、案例和你目前情况的匹配点，然后你告诉我哪里还不放心。",
+      premium: "这是专业判断，不应该靠承诺。我们会用诊断、流程和跟进标准来降低风险；我先说明我们能控制什么，不能承诺什么。"
+    },
+    close: "看完这些证据后，你还差哪一个信息才会放心开始？",
+    next: ["承认顾虑合理", "展示流程/案例/诊断依据", "不要承诺百分百效果"]
+  },
+  {
+    id: "competitor",
+    label: "比较竞争对手",
+    keywords: ["别人", "其他", "外面", "别家", "比较", "competitor", "another place", "cheaper", "package"],
+    reply: {
+      warm: "可以比较，这是很正常的。只是比较时不要只看价钱，要看适不适合你的问题、后续跟进、谁负责帮你调整。我们可以一起对比这几个点。",
+      direct: "如果只是比价，一定有人更便宜。重点是你要买便宜，还是买一个比较有把握解决问题的方案？",
+      premium: "我建议你用同一套标准比较：诊断准确度、方案完整度、后续服务和实际案例。这样会比单看价格更公平。"
+    },
+    close: "如果这几个关键点我们更符合你的需要，你会愿意优先选我们吗？",
+    next: ["建立比较标准", "把焦点从低价拉回结果和服务", "问客户竞争对手吸引他的具体点"]
+  },
+  {
+    id: "time",
+    label: "时间/忙碌异议",
+    keywords: ["忙", "没时间", "时间", "schedule", "busy", "赶", "下个月", "过后", "travel"],
+    reply: {
+      warm: "我明白，时间安排真的会影响执行。我们先看现实一点：你一周大概可以安排多少时间？我再帮你选不会太有压力的方式。",
+      direct: "时间是关键。如果你真的想解决这个问题，我们需要找一个可执行的安排。你比较适合 weekday 还是 weekend？",
+      premium: "我们可以按你的节奏设计，不一定要硬塞很多时间。重点是持续和跟进，我先帮你确认最稳的频率。"
+    },
+    close: "如果时间安排我帮你配好，你今天可以先确认开始日期吗？",
+    next: ["把“没时间”变成具体排程问题", "提供低压力选项", "锁定开始日期"]
+  },
+  {
+    id: "need",
+    label: "需求不强/优先级低",
+    keywords: ["不需要", "还好", "没有很严重", "暂时", "priority", "not urgent", "还可以", "先不要"],
+    reply: {
+      warm: "明白，如果现在感觉还可以，就不会急着做决定。我想问一个现实的问题：如果维持现在这样三个月，你觉得会更好、一样，还是更难处理？",
+      direct: "可以不急，但我们要判断不处理的成本。这个问题如果继续拖，影响最大的是钱、时间，还是信心？",
+      premium: "我们先不用急着推方案，先评估优先级。你希望三个月后看到什么改变？如果这个改变重要，我们再谈下一步。"
+    },
+    close: "如果你也觉得现在处理比之后处理更容易，我们可以先从入门方案开始吗？",
+    next: ["制造未来对比", "让客户自己说出不处理成本", "推荐低门槛下一步"]
+  }
+];
+
+const assistantFallback = {
+  label: "需要澄清",
+  reply: {
+    warm: "我明白。为了不要答非所问，我想先确认一下：你现在最担心的是价格、效果、时间，还是需要跟别人商量？",
+    direct: "我先确认重点。你现在卡住的原因是哪一个：预算、信任、时间，还是还没看到价值？",
+    premium: "我先把问题厘清。你现在需要更多资料，还是你已经有一个具体顾虑想先解决？"
+  },
+  close: "你告诉我最主要的顾虑，我就可以帮你判断哪一个方案最适合。",
+  next: ["先问澄清问题", "不要急着解释产品", "记录客户使用的原话"]
 };
 
 async function api(path, options = {}) {
@@ -695,12 +807,145 @@ function renderUsers() {
     .join("");
 }
 
+function renderAssistantCustomers() {
+  if (!els.assistantCustomer) return;
+  const current = els.assistantCustomer.value;
+  const options = state.customers
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(
+      (customer) =>
+        `<option value="${escapeHtml(customer.id)}">${escapeHtml(customer.name)} · ${escapeHtml(customer.status)} · ${escapeHtml(customer.stage)}</option>`
+    )
+    .join("");
+  els.assistantCustomer.innerHTML = `<option value="">临时顾客</option>${options}`;
+  els.assistantCustomer.value = state.customers.some((customer) => customer.id === current) ? current : "";
+}
+
+function customerAssistantContext(customer) {
+  if (!customer) return "";
+  const activities = state.activities
+    .filter((activity) => activity.customerId === customer.id)
+    .slice()
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 3)
+    .map((activity) => `${activity.date} ${activity.type}: ${activity.note}`)
+    .join("\n");
+  return [
+    `客户：${customer.name}`,
+    `状态：${customer.status}`,
+    `阶段：${customer.stage}`,
+    customer.source ? `Batch：${customer.source}` : "",
+    customer.boosterComment ? `Booster 备注：${customer.boosterComment}` : "",
+    activities ? `最近跟进：\n${activities}` : ""
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function scoreAssistantRule(text, rule) {
+  return rule.keywords.reduce((score, keyword) => {
+    const normalizedKeyword = keyword.toLowerCase();
+    return text.includes(normalizedKeyword) ? score + Math.max(1, normalizedKeyword.length / 2) : score;
+  }, 0);
+}
+
+function detectAssistantRule(transcript) {
+  const text = transcript.toLowerCase();
+  const scored = assistantRules
+    .map((rule) => ({ rule, score: scoreAssistantRule(text, rule) }))
+    .sort((a, b) => b.score - a.score);
+  const best = scored[0];
+  if (!best || best.score <= 0) return { rule: assistantFallback, confidence: 42 };
+  const secondScore = scored[1]?.score || 0;
+  const confidence = Math.min(94, Math.round(58 + best.score * 8 + (best.score - secondScore) * 4));
+  return { rule: best.rule, confidence };
+}
+
+function promptHints(prompt) {
+  const cleaned = prompt.trim();
+  if (!cleaned) return [];
+  return cleaned
+    .split(/\n+/)
+    .map((line) => line.replace(/^[-*•\d.\s]+/, "").trim())
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+function analyzeAssistant() {
+  if (!els.assistantTranscript) return null;
+  const transcript = els.assistantTranscript.value.trim();
+  const tone = els.assistantTone.value || "warm";
+  const customer = getCustomer(els.assistantCustomer.value);
+  const hints = promptHints(els.assistantPrompt.value);
+  const detected = transcript ? detectAssistantRule(transcript) : { rule: assistantFallback, confidence: 0 };
+  const rule = detected.rule;
+  const context = customerAssistantContext(customer);
+  const result = {
+    label: transcript ? rule.label : "等待顾客输入",
+    confidence: detected.confidence,
+    reply: transcript
+      ? rule.reply[tone] || rule.reply.warm
+      : "先输入或听写顾客刚刚说的话，我会在这里生成 BA 可以直接讲的回复。",
+    close: transcript ? rule.close : "顾客说出异议后，这里会出现下一句 closing question。",
+    next: transcript ? rule.next : ["先记录顾客原话", "听出真正顾虑", "再引导下一步"],
+    hints,
+    context
+  };
+  assistantLastResult = result;
+  return result;
+}
+
+function renderAssistant() {
+  renderAssistantCustomers();
+  if (!els.assistantResult) return;
+  const result = analyzeAssistant();
+  if (!result) return;
+  const hintHtml = result.hints.length
+    ? `<div class="assistant-card"><span>Prompt 重点</span><ul>${result.hints.map((hint) => `<li>${escapeHtml(hint)}</li>`).join("")}</ul></div>`
+    : "";
+  const contextHtml = result.context
+    ? `<div class="assistant-card muted-card"><span>客户上下文</span><pre>${escapeHtml(result.context)}</pre></div>`
+    : "";
+  els.assistantResult.innerHTML = `
+    <div class="assistant-diagnosis">
+      <div>
+        <span>异议类型</span>
+        <strong>${escapeHtml(result.label)}</strong>
+      </div>
+      <div>
+        <span>信心</span>
+        <strong>${result.confidence ? `${result.confidence}%` : "-"}</strong>
+      </div>
+    </div>
+    <div class="assistant-card highlight-card">
+      <span>BA 可以这样说</span>
+      <p>${escapeHtml(result.reply)}</p>
+    </div>
+    <div class="assistant-card">
+      <span>下一句 Closing Question</span>
+      <p>${escapeHtml(result.close)}</p>
+    </div>
+    <div class="assistant-card">
+      <span>下一步动作</span>
+      <ul>${result.next.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+    </div>
+    ${hintHtml}
+    ${contextHtml}
+    <div class="assistant-card guardrail-card">
+      <span>提醒</span>
+      <p>不要承诺无法保证的结果、隐藏费用或未经确认的折扣。顾客没有讲清楚时，先问澄清问题。</p>
+    </div>
+  `;
+}
+
 function render() {
   renderSelectOptions();
   renderDashboard();
   renderKanban();
   renderCustomerTable();
   renderActivities();
+  renderAssistant();
   if (currentUser.role === "admin") renderUsers();
 }
 
@@ -712,6 +957,7 @@ function setView(view) {
     pipeline: "销售看板",
     customers: "客户状态",
     activities: "跟进记录",
+    assistant: "Closing Assistant",
     accounts: "团队账号",
     settings: "系统设置"
   };
@@ -1103,6 +1349,130 @@ function activityPhotosHtml(attachments = [], date = "") {
   `;
 }
 
+function assistantTextForClipboard() {
+  const result = assistantLastResult || analyzeAssistant();
+  if (!result) return "";
+  return [
+    `异议类型：${result.label}`,
+    `BA 回复：${result.reply}`,
+    `Closing Question：${result.close}`,
+    `下一步：${result.next.join(" / ")}`
+  ].join("\n");
+}
+
+async function copyAssistantReply() {
+  const text = assistantTextForClipboard();
+  if (!text) return;
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+  } else {
+    const selection = window.getSelection();
+    const holder = document.createElement("textarea");
+    holder.value = text;
+    holder.style.position = "fixed";
+    holder.style.opacity = "0";
+    document.body.appendChild(holder);
+    holder.select();
+    document.execCommand("copy");
+    document.body.removeChild(holder);
+    selection?.removeAllRanges();
+  }
+  showStatus("Closing Assistant 回复已复制。");
+}
+
+async function saveAssistantActivity() {
+  const customerId = els.assistantCustomer.value;
+  if (!customerId) {
+    showStatus("请选择一个 CRM 客户，才能把建议存为跟进记录。", true);
+    return;
+  }
+  const customer = getCustomer(customerId);
+  const transcript = els.assistantTranscript.value.trim();
+  const result = assistantLastResult || analyzeAssistant();
+  if (!customer || !result || !transcript) {
+    showStatus("先输入顾客原话，再保存跟进。", true);
+    return;
+  }
+  await api("/api/activities", {
+    method: "POST",
+    body: JSON.stringify({
+      customerId,
+      type: settings.activityTypes[0],
+      date: todayISO(),
+      owner: customer.owner,
+      note: [
+        "Closing Assistant",
+        `顾客原话：${transcript}`,
+        `异议类型：${result.label}`,
+        `建议回复：${result.reply}`,
+        `Closing Question：${result.close}`
+      ].join("\n")
+    })
+  });
+  showStatus(`${customer.name} 的 closing 建议已存为跟进记录。`);
+  await loadState();
+}
+
+function appendAssistantTranscript(text) {
+  const clean = text.trim();
+  if (!clean) return;
+  const prefix = els.assistantTranscript.value.trim() ? "\n" : "";
+  els.assistantTranscript.value += `${prefix}${clean}`;
+  renderAssistant();
+}
+
+function setupAssistantSpeech() {
+  if (!els.assistantMicButton) return;
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    els.assistantMicButton.disabled = true;
+    els.assistantMicStatus.textContent = "这个浏览器暂时不支持语音听写。你仍然可以粘贴顾客原话实时分析。";
+    return;
+  }
+  assistantRecognition = new SpeechRecognition();
+  assistantRecognition.lang = "zh-CN";
+  assistantRecognition.continuous = true;
+  assistantRecognition.interimResults = true;
+  assistantRecognition.onresult = (event) => {
+    let finalText = "";
+    let interimText = "";
+    for (let index = event.resultIndex; index < event.results.length; index += 1) {
+      const transcript = event.results[index][0].transcript;
+      if (event.results[index].isFinal) finalText += transcript;
+      else interimText += transcript;
+    }
+    if (finalText) appendAssistantTranscript(finalText);
+    els.assistantMicStatus.textContent = interimText ? `正在听：${interimText}` : "正在听写顾客讲话...";
+  };
+  assistantRecognition.onerror = (event) => {
+    assistantListening = false;
+    els.assistantMicButton.textContent = "开始听写";
+    els.assistantMicStatus.textContent = `听写停止：${event.error || "浏览器无法取得麦克风"}`;
+  };
+  assistantRecognition.onend = () => {
+    if (!assistantListening) {
+      els.assistantMicButton.textContent = "开始听写";
+      return;
+    }
+    assistantRecognition.start();
+  };
+}
+
+function toggleAssistantSpeech() {
+  if (!assistantRecognition) return;
+  if (assistantListening) {
+    assistantListening = false;
+    assistantRecognition.stop();
+    els.assistantMicButton.textContent = "开始听写";
+    els.assistantMicStatus.textContent = "听写已停止。";
+    return;
+  }
+  assistantListening = true;
+  assistantRecognition.start();
+  els.assistantMicButton.textContent = "停止听写";
+  els.assistantMicStatus.textContent = "正在请求麦克风权限...";
+}
+
 els.loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   els.loginError.hidden = true;
@@ -1143,6 +1513,35 @@ els.navItems.forEach((item) => {
   els.sourceFilter,
   els.activityTypeFilter
 ].forEach((control) => control.addEventListener("input", render));
+
+[
+  els.assistantCustomer,
+  els.assistantTone,
+  els.assistantTranscript,
+  els.assistantPrompt
+].forEach((control) => control?.addEventListener("input", renderAssistant));
+
+els.assistantSampleButton?.addEventListener("click", () => {
+  els.assistantTranscript.value =
+    "我觉得这个配套有点贵，而且我想回去问我老公先。外面好像也有比较便宜的。";
+  els.assistantPrompt.value ||= "先认同顾客，不硬 sell。\n不能保证结果，只能说明流程、案例和跟进。\n目标是问出真正顾虑并锁定下一步。";
+  renderAssistant();
+});
+
+els.assistantClearButton?.addEventListener("click", () => {
+  els.assistantTranscript.value = "";
+  renderAssistant();
+});
+
+els.assistantCopyButton?.addEventListener("click", () => {
+  copyAssistantReply().catch((error) => showStatus(error.message, true));
+});
+
+els.assistantSaveButton?.addEventListener("click", () => {
+  saveAssistantActivity().catch((error) => showStatus(error.message, true));
+});
+
+els.assistantMicButton?.addEventListener("click", toggleAssistantSpeech);
 
 document.querySelector("#customerStatus").addEventListener("change", updateDealValueVisibility);
 document.querySelector("#customerAttachmentInput").addEventListener("change", () => {
@@ -1459,4 +1858,5 @@ els.activityForm.addEventListener("submit", async (event) => {
   }
 });
 
+setupAssistantSpeech();
 boot().catch(() => showLogin());
