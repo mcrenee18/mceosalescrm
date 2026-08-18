@@ -7,9 +7,10 @@ let settings = {
   monthTarget: 180000,
   stages: ["广告", "3天免费 Webinar", "Booster", "Closing", "Follow up"],
   statuses: [
-    { name: "潜在客户", color: "#176b87", isWon: false },
-    { name: "已成交", color: "#16805c", isWon: true },
-    { name: "暂停", color: "#b42318", isWon: false }
+    { name: "有兴趣", color: "#176b87", isWon: false },
+    { name: "考虑中", color: "#16805c", isWon: false },
+    { name: "暂停", color: "#b42318", isWon: false },
+    { name: "已成交", color: "#b86e0f", isWon: true }
   ],
   activityTypes: ["通话", "微信", "会议", "备注"],
   logoDataUrl: "",
@@ -478,6 +479,40 @@ function paymentStatus(customer) {
   return { key: "future", label: "未到期", tone: "neutral" };
 }
 
+function monthKey(date = new Date()) {
+  return date.toISOString().slice(0, 7);
+}
+
+function previousMonthKey(currentKey) {
+  const [year, month] = currentKey.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 2, 1)).toISOString().slice(0, 7);
+}
+
+function daysInMonth(currentKey) {
+  const [year, month] = currentKey.split("-").map(Number);
+  return new Date(year, month, 0).getDate();
+}
+
+function monthlyCollectedFor(customers, currentKey) {
+  const customerIds = new Set(customers.map((customer) => customer.id));
+  const paymentTotal = (state.payments || [])
+    .filter((payment) => customerIds.has(payment.customerId))
+    .filter((payment) => String(payment.paymentDate || "").startsWith(currentKey))
+    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const manualCollected = customers
+    .filter((customer) => !customerPayments(customer.id).length)
+    .filter((customer) => isWonStatus(customer.status) && String(customer.expectedClose || "").startsWith(currentKey))
+    .reduce((sum, customer) => sum + Number(customer.collectedAmount || 0), 0);
+  return paymentTotal + manualCollected;
+}
+
+function wonCustomersFor(customers, currentKey = "") {
+  return customers.filter((customer) => {
+    if (!isWonStatus(customer.status)) return false;
+    return !currentKey || String(customer.expectedClose || "").startsWith(currentKey);
+  });
+}
+
 function getOwners() {
   return [...new Set(state.customers.map((customer) => customer.owner).filter(Boolean))].sort();
 }
@@ -637,22 +672,39 @@ function renderSelectOptions() {
 function renderDashboard() {
   const customers = state.customers;
   const dueToday = customers.filter((customer) => customer.nextFollowUp <= todayISO());
-  const currentMonth = todayISO().slice(0, 7);
-  const monthlyWon = customers.filter(
-    (customer) => isWonStatus(customer.status) && customer.expectedClose.startsWith(currentMonth)
-  );
-  const monthlyCollected = monthlyWon.reduce((sum, customer) => sum + collectedTotal(customer), 0);
+  const currentMonth = monthKey();
+  const previousMonth = previousMonthKey(currentMonth);
+  const monthlyWon = wonCustomersFor(customers, currentMonth);
+  const allWon = wonCustomersFor(customers);
+  const monthlyCollected = monthlyCollectedFor(customers, currentMonth);
+  const previousCollected = monthlyCollectedFor(customers, previousMonth);
+  const conversionRate = customers.length ? Math.round((allWon.length / customers.length) * 100) : 0;
 
   document.querySelector("#metricCustomers").textContent = customers.length;
   document.querySelector("#metricMonthlySales").textContent = money(monthlyCollected);
   document.querySelector("#metricMonthlyWon").textContent = monthlyWon.length;
   document.querySelector("#metricDue").textContent = dueToday.length;
+  document.querySelector("#metricConversionRate").textContent = `${conversionRate}%`;
 
   const dashboardTarget =
     currentUser.role === "sales"
       ? Number(settings.ownerTargets[currentUser.ownerName] || settings.monthTarget)
       : Number(settings.monthTarget);
-  const progress = Math.min(Math.round((monthlyCollected / dashboardTarget) * 100), 100);
+  const today = new Date();
+  const elapsedDays = today.getDate();
+  const forecast = monthlyCollected > 0
+    ? Math.round((monthlyCollected / elapsedDays) * daysInMonth(currentMonth))
+    : 0;
+  const trendDifference = monthlyCollected - previousCollected;
+  const trendLabel = previousCollected
+    ? `${trendDifference >= 0 ? "+" : "-"}${money(Math.abs(trendDifference))} vs 上月`
+    : "上月没有可比较数据";
+  const forecastGap = forecast - dashboardTarget;
+  document.querySelector("#metricForecast").textContent = money(forecast);
+  document.querySelector("#metricForecastCopy").textContent =
+    `${forecastGap >= 0 ? "预测可达标" : "预测差 " + money(Math.abs(forecastGap))} · ${trendLabel}`;
+
+  const progress = dashboardTarget > 0 ? Math.min(Math.round((monthlyCollected / dashboardTarget) * 100), 100) : 0;
   const remaining = Math.max(dashboardTarget - monthlyCollected, 0);
   document.querySelector("#targetProgress").style.width = `${progress}%`;
   document.querySelector("#monthTarget").textContent = money(remaining);
@@ -683,29 +735,56 @@ function renderTeamList() {
     return;
   }
 
-  list.innerHTML = owners
+  const rows = owners
     .map((owner) => {
       const owned = state.customers.filter((customer) => customer.owner === owner);
       const due = owned.filter((customer) => customer.nextFollowUp <= todayISO()).length;
       const ownerActivities = state.activities.filter((activity) => activity.owner === owner).length;
-      const ownerWon = owned.filter(
-        (customer) => isWonStatus(customer.status) && customer.expectedClose.startsWith(todayISO().slice(0, 7))
-      );
-      const ownerCollected = ownerWon.reduce((sum, customer) => sum + collectedTotal(customer), 0);
+      const ownerWon = wonCustomersFor(owned, monthKey());
+      const allOwnerWon = wonCustomersFor(owned);
+      const ownerCollected = monthlyCollectedFor(owned, monthKey());
       const ownerTarget = Number(settings.ownerTargets[owner] || settings.monthTarget);
-      const percent = Math.min(Math.round((ownerCollected / ownerTarget) * 100), 100);
+      const rawPercent = ownerTarget > 0 ? Math.round((ownerCollected / ownerTarget) * 100) : 0;
+      const percent = Math.min(rawPercent, 100);
+      const gap = ownerCollected - ownerTarget;
+      const conversion = owned.length ? Math.round((allOwnerWon.length / owned.length) * 100) : 0;
+      return {
+        owner,
+        owned,
+        due,
+        ownerActivities,
+        ownerWon,
+        ownerCollected,
+        ownerTarget,
+        rawPercent,
+        percent,
+        gap,
+        conversion
+      };
+    })
+    .sort((a, b) => b.rawPercent - a.rawPercent || b.ownerCollected - a.ownerCollected);
 
+  list.innerHTML = rows
+    .map((row, index) => {
+      const statusLabel = row.rawPercent >= 100 ? "超额/达标" : row.rawPercent >= 70 ? "接近目标" : "需要关注";
       return `
-        <div class="team-row">
+        <div class="team-row ${row.rawPercent >= 100 ? "is-ahead" : row.rawPercent < 50 ? "is-risk" : ""}">
           <div>
-            <div class="owner-name">${escapeHtml(owner)}</div>
-            <div class="owner-meta">${owned.length} 个客户 · ${due} 个待跟进</div>
+            <div class="owner-rank">#${index + 1}</div>
+            <div class="owner-name">${escapeHtml(row.owner)}</div>
+            <div class="owner-meta">${row.owned.length} 个客户 · ${row.ownerWon.length} 个本月成交 · ${row.due} 个待跟进</div>
           </div>
           <div>
-            <div class="mini-progress"><span style="width:${percent}%"></span></div>
-            <div class="owner-meta">Collected ${money(ownerCollected)} / KPI ${money(ownerTarget)} · ${ownerActivities} 条跟进</div>
+            <div class="team-row-topline">
+              <strong>${money(row.ownerCollected)}</strong>
+              <span>${row.rawPercent}%</span>
+            </div>
+            <div class="mini-progress"><span style="width:${row.percent}%"></span></div>
+            <div class="owner-meta">
+              KPI ${money(row.ownerTarget)} · ${row.gap >= 0 ? "超出" : "还差"} ${money(Math.abs(row.gap))} · 转化率 ${row.conversion}% · ${row.ownerActivities} 条跟进
+            </div>
           </div>
-          <strong>${percent}%</strong>
+          <span class="team-status">${statusLabel}</span>
         </div>
       `;
     })

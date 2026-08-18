@@ -499,7 +499,7 @@ textarea:focus-visible {
 
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 20px;
 }
@@ -550,7 +550,7 @@ textarea:focus-visible {
 .metric-card strong {
   display: block;
   margin: 7px 0;
-  font-size: 30px;
+  font-size: clamp(24px, 2.1vw, 30px);
   line-height: 1.05;
 }
 
@@ -869,19 +869,60 @@ textarea:hover {
 
 .team-row {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(160px, 2fr) auto;
+  grid-template-columns: minmax(150px, 0.9fr) minmax(220px, 1.7fr) auto;
   gap: 14px;
   align-items: center;
-  padding: 13px 0;
-  border-bottom: 1px solid var(--line);
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
 }
 
-.team-row:last-child {
-  border-bottom: 0;
+.team-row.is-ahead {
+  border-color: rgba(19, 128, 93, 0.32);
+  background: linear-gradient(180deg, #f4fbf8, #ffffff);
+}
+
+.team-row.is-risk {
+  border-color: rgba(180, 35, 24, 0.22);
+  background: linear-gradient(180deg, #fff8f6, #ffffff);
+}
+
+.owner-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  min-height: 28px;
+  margin-bottom: 6px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  font-weight: 800;
+  font-size: 12px;
 }
 
 .owner-name {
   font-weight: 700;
+}
+
+.team-row-topline {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 7px;
+  font-weight: 800;
+}
+
+.team-status {
+  justify-self: end;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #eef4f3;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .owner-meta,

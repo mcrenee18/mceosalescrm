@@ -115,6 +115,16 @@
               <strong id="metricDue">0</strong>
               <p>需要团队处理</p>
             </article>
+            <article class="metric-card">
+              <span>转化率</span>
+              <strong id="metricConversionRate">0%</strong>
+              <p>客户总数 → 已成交</p>
+            </article>
+            <article class="metric-card">
+              <span>本月预测</span>
+              <strong id="metricForecast">RM 0.00</strong>
+              <p id="metricForecastCopy">照目前节奏计算</p>
+            </article>
           </div>
 
           <div class="dashboard-layout">
@@ -162,9 +172,10 @@
             <div class="filter-row">
               <select id="statusFilter" aria-label="状态筛选">
                 <option value="all">全部状态</option>
-                <option value="潜在客户">潜在客户</option>
-                <option value="客户">客户</option>
+                <option value="有兴趣">有兴趣</option>
+                <option value="考虑中">考虑中</option>
                 <option value="暂停">暂停</option>
+                <option value="已成交">已成交</option>
               </select>
               <select id="sourceFilter" aria-label="Booster 月份筛选">
                 <option value="all">全部 Booster 月份</option>
