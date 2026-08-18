@@ -16,7 +16,7 @@ let settings = {
   ownerTargets: {}
 };
 
-let state = { customers: [], activities: [] };
+let state = { customers: [], activities: [], payments: [] };
 let currentUser = null;
 let users = [];
 let activeView = "dashboard";
@@ -42,15 +42,19 @@ const els = {
   ownerFilter: document.querySelector("#ownerFilter"),
   stageOwnerFilter: document.querySelector("#stageOwnerFilter"),
   customerOwnerFilter: document.querySelector("#customerOwnerFilter"),
+  paymentOwnerFilter: document.querySelector("#paymentOwnerFilter"),
+  paymentStatusFilter: document.querySelector("#paymentStatusFilter"),
   activityOwnerFilter: document.querySelector("#activityOwnerFilter"),
   statusFilter: document.querySelector("#statusFilter"),
   sourceFilter: document.querySelector("#sourceFilter"),
   activityTypeFilter: document.querySelector("#activityTypeFilter"),
   customerDialog: document.querySelector("#customerDialog"),
   activityDialog: document.querySelector("#activityDialog"),
+  paymentDialog: document.querySelector("#paymentDialog"),
   editUserDialog: document.querySelector("#editUserDialog"),
   customerForm: document.querySelector("#customerForm"),
   activityForm: document.querySelector("#activityForm"),
+  paymentForm: document.querySelector("#paymentForm"),
   changePasswordForm: document.querySelector("#changePasswordForm"),
   userForm: document.querySelector("#userForm"),
   settingsForm: document.querySelector("#settingsForm"),
@@ -228,6 +232,7 @@ function showApp() {
   els.ownerFilter.disabled = currentUser.role !== "admin";
   els.stageOwnerFilter.disabled = currentUser.role !== "admin";
   els.customerOwnerFilter.disabled = currentUser.role !== "admin";
+  els.paymentOwnerFilter.disabled = currentUser.role !== "admin";
   els.activityOwnerFilter.disabled = currentUser.role !== "admin";
 }
 
@@ -404,6 +409,75 @@ function getCustomer(id) {
   return state.customers.find((customer) => customer.id === id);
 }
 
+function customerPayments(customerId) {
+  return (state.payments || [])
+    .filter((payment) => payment.customerId === customerId)
+    .sort((a, b) => b.paymentDate.localeCompare(a.paymentDate));
+}
+
+function paymentPlanTotal(customer) {
+  return Number(customer.totalAmount || customer.dealValue || 0);
+}
+
+function loggedCollected(customer) {
+  return customerPayments(customer.id).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+}
+
+function collectedTotal(customer) {
+  return Math.max(Number(customer.collectedAmount || 0), loggedCollected(customer));
+}
+
+function paymentBalance(customer) {
+  return Math.max(paymentPlanTotal(customer) - collectedTotal(customer), 0);
+}
+
+function addMonths(dateString, monthCount) {
+  if (!dateString) return "";
+  const date = new Date(`${dateString}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "";
+  const day = date.getDate();
+  date.setMonth(date.getMonth() + monthCount);
+  if (date.getDate() !== day) date.setDate(0);
+  return date.toISOString().slice(0, 10);
+}
+
+function nextPaymentDue(customer) {
+  if (paymentBalance(customer) <= 0) return "";
+  const payments = customerPayments(customer.id);
+  const paidTerms = payments.filter((payment) => Number(payment.amount || 0) > 0).length;
+  const terms = Number(customer.totalTerms || 0);
+  if (terms > 0 && paidTerms >= terms) return "";
+  const baseDate = customer.firstPaymentDate || customer.expectedClose || "";
+  const nextDate = addMonths(baseDate, Math.max(paidTerms, 0));
+  if (!nextDate) return "";
+  const preferredDay = Number(customer.paymentDay || 0);
+  if (preferredDay < 1) return nextDate;
+  const date = new Date(`${nextDate}T00:00:00`);
+  const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  date.setDate(Math.min(preferredDay, lastDay));
+  return date.toISOString().slice(0, 10);
+}
+
+function paymentStatus(customer) {
+  const dueDate = nextPaymentDue(customer);
+  if (paymentBalance(customer) <= 0 && paymentPlanTotal(customer) > 0) {
+    return { key: "complete", label: "已收完", tone: "success" };
+  }
+  if (!paymentPlanTotal(customer)) {
+    return { key: "setup", label: "未设置付款计划", tone: "neutral" };
+  }
+  if (!dueDate) {
+    return { key: "setup", label: "缺少付款日期", tone: "neutral" };
+  }
+  if (dueDate < todayISO()) {
+    return { key: "overdue", label: "已逾期", tone: "danger" };
+  }
+  if (dueDate.slice(0, 7) === todayISO().slice(0, 7)) {
+    return { key: "due", label: "本月应收", tone: "warning" };
+  }
+  return { key: "future", label: "未到期", tone: "neutral" };
+}
+
 function getOwners() {
   return [...new Set(state.customers.map((customer) => customer.owner).filter(Boolean))].sort();
 }
@@ -421,6 +495,9 @@ function queryText(customer) {
     customer.status,
     customer.owner,
     customer.stage,
+    customer.programPackage,
+    customer.totalAmount,
+    customer.collectedAmount,
     customer.note
   ]
     .join(" ")
@@ -432,15 +509,23 @@ function filteredCustomers() {
   const owner = els.ownerFilter.value;
   const stageOwner = els.stageOwnerFilter.value;
   const customerOwner = els.customerOwnerFilter.value;
+  const paymentOwner = els.paymentOwnerFilter.value;
   const status = els.statusFilter.value;
   const boosterMonth = els.sourceFilter.value;
-  const selectedOwner = activeView === "pipeline" ? stageOwner : activeView === "customers" ? customerOwner : owner;
+  const selectedOwner =
+    activeView === "pipeline"
+      ? stageOwner
+      : activeView === "customers"
+        ? customerOwner
+        : activeView === "payments"
+          ? paymentOwner
+          : owner;
 
   return state.customers.filter((customer) => {
     if (search && !queryText(customer).includes(search)) return false;
     if (selectedOwner !== "all" && customer.owner !== selectedOwner) return false;
-    if (status !== "all" && customer.status !== status) return false;
-    if (boosterMonth !== "all" && customer.stage !== boosterMonth) return false;
+    if (activeView === "customers" && status !== "all" && customer.status !== status) return false;
+    if (activeView === "customers" && boosterMonth !== "all" && customer.stage !== boosterMonth) return false;
     return true;
   });
 }
@@ -449,7 +534,7 @@ function renderSelectOptions() {
   const owners = getOwners();
   const boosterMonths = getCustomerStages();
 
-  [els.ownerFilter, els.stageOwnerFilter, els.customerOwnerFilter, els.activityOwnerFilter].forEach((select) => {
+  [els.ownerFilter, els.stageOwnerFilter, els.customerOwnerFilter, els.paymentOwnerFilter, els.activityOwnerFilter].forEach((select) => {
     const current = select.value;
     select.innerHTML = '<option value="all">全部负责人</option>';
     owners.forEach((owner) => {
@@ -523,6 +608,7 @@ function renderSelectOptions() {
   });
 
   const activityCustomer = document.querySelector("#activityCustomer");
+  const selectedActivityCustomer = activityCustomer.value;
   activityCustomer.innerHTML = "";
   state.customers.forEach((customer) => {
     activityCustomer.insertAdjacentHTML(
@@ -530,6 +616,22 @@ function renderSelectOptions() {
       `<option value="${escapeHtml(customer.id)}">${escapeHtml(customer.name)}</option>`
     );
   });
+  activityCustomer.value = state.customers.some((customer) => customer.id === selectedActivityCustomer)
+    ? selectedActivityCustomer
+    : state.customers[0]?.id || "";
+
+  const paymentCustomer = document.querySelector("#paymentCustomer");
+  const selectedPaymentCustomer = paymentCustomer.value;
+  paymentCustomer.innerHTML = "";
+  state.customers.forEach((customer) => {
+    paymentCustomer.insertAdjacentHTML(
+      "beforeend",
+      `<option value="${escapeHtml(customer.id)}">${escapeHtml(customer.name)} · ${escapeHtml(customer.owner)}</option>`
+    );
+  });
+  paymentCustomer.value = state.customers.some((customer) => customer.id === selectedPaymentCustomer)
+    ? selectedPaymentCustomer
+    : state.customers[0]?.id || "";
 }
 
 function renderDashboard() {
@@ -539,7 +641,7 @@ function renderDashboard() {
   const monthlyWon = customers.filter(
     (customer) => isWonStatus(customer.status) && customer.expectedClose.startsWith(currentMonth)
   );
-  const monthlyCollected = monthlyWon.reduce((sum, customer) => sum + Number(customer.collectedAmount || 0), 0);
+  const monthlyCollected = monthlyWon.reduce((sum, customer) => sum + collectedTotal(customer), 0);
 
   document.querySelector("#metricCustomers").textContent = customers.length;
   document.querySelector("#metricMonthlySales").textContent = money(monthlyCollected);
@@ -589,7 +691,7 @@ function renderTeamList() {
       const ownerWon = owned.filter(
         (customer) => isWonStatus(customer.status) && customer.expectedClose.startsWith(todayISO().slice(0, 7))
       );
-      const ownerCollected = ownerWon.reduce((sum, customer) => sum + Number(customer.collectedAmount || 0), 0);
+      const ownerCollected = ownerWon.reduce((sum, customer) => sum + collectedTotal(customer), 0);
       const ownerTarget = Number(settings.ownerTargets[owner] || settings.monthTarget);
       const percent = Math.min(Math.round((ownerCollected / ownerTarget) * 100), 100);
 
@@ -708,13 +810,83 @@ function renderCustomerTable() {
           <td>${escapeHtml(customer.owner)}</td>
           <td>${escapeHtml(customer.stage)}</td>
           <td>${escapeHtml(customer.nextFollowUp)}</td>
-          <td>${isWonStatus(customer.status) ? money(customer.dealValue || 0) : "-"}</td>
-          <td>${isWonStatus(customer.status) ? money(customer.collectedAmount || 0) : "-"}</td>
+          <td>${paymentPlanTotal(customer) ? money(paymentPlanTotal(customer)) : "-"}</td>
+          <td>${collectedTotal(customer) ? money(collectedTotal(customer)) : "-"}</td>
           <td>
             <div class="table-actions">
               <button type="button" data-edit="${escapeHtml(customer.id)}">编辑</button>
               <button type="button" data-add-activity="${escapeHtml(customer.id)}">跟进</button>
               <button type="button" data-delete="${escapeHtml(customer.id)}">删除</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function renderPayments() {
+  const table = document.querySelector("#paymentTable");
+  if (!table) return;
+
+  const selectedStatus = els.paymentStatusFilter.value;
+  const customers = filteredCustomers()
+    .map((customer) => ({
+      customer,
+      status: paymentStatus(customer),
+      total: paymentPlanTotal(customer),
+      paid: collectedTotal(customer),
+      balance: paymentBalance(customer),
+      nextDue: nextPaymentDue(customer),
+      logs: customerPayments(customer.id)
+    }))
+    .filter((item) => selectedStatus === "all" || item.status.key === selectedStatus)
+    .sort((a, b) => {
+      if (!a.nextDue) return 1;
+      if (!b.nextDue) return -1;
+      return a.nextDue.localeCompare(b.nextDue);
+    });
+
+  const total = customers.reduce((sum, item) => sum + item.total, 0);
+  const paid = customers.reduce((sum, item) => sum + item.paid, 0);
+  const balance = customers.reduce((sum, item) => sum + item.balance, 0);
+  const due = customers.filter((item) => ["overdue", "due"].includes(item.status.key)).length;
+
+  document.querySelector("#paymentMetricTotal").textContent = money(total);
+  document.querySelector("#paymentMetricPaid").textContent = money(paid);
+  document.querySelector("#paymentMetricBalance").textContent = money(balance);
+  document.querySelector("#paymentMetricDue").textContent = due;
+
+  if (!customers.length) {
+    table.innerHTML = '<tr><td colspan="9"><div class="empty-state">没有符合条件的收款资料。</div></td></tr>';
+    return;
+  }
+
+  table.innerHTML = customers
+    .map(({ customer, status, total, paid, balance, nextDue, logs }) => {
+      const latestPayment = logs[0];
+      const progress = total > 0 ? Math.min(Math.round((paid / total) * 100), 100) : 0;
+      return `
+        <tr>
+          <td>
+            <strong>${escapeHtml(customer.name)}</strong>
+            <div class="customer-meta">${escapeHtml(customer.phone || "无电话")} · ${escapeHtml(customer.email || "无邮箱")}</div>
+            ${latestPayment ? `<div class="customer-meta">最新收款 ${escapeHtml(latestPayment.paymentDate)} · ${money(latestPayment.amount)}</div>` : ""}
+          </td>
+          <td>${escapeHtml(customer.owner)}</td>
+          <td>${escapeHtml(customer.programPackage || customer.source || "-")}</td>
+          <td>${total ? money(total) : "-"}</td>
+          <td>
+            <strong>${money(paid)}</strong>
+            <div class="payment-progress"><span style="width:${progress}%"></span></div>
+          </td>
+          <td>${balance ? money(balance) : "RM 0.00"}</td>
+          <td>${nextDue || "-"}</td>
+          <td><span class="payment-status ${escapeHtml(status.tone)}">${escapeHtml(status.label)}</span></td>
+          <td>
+            <div class="table-actions">
+              <button type="button" data-add-payment="${escapeHtml(customer.id)}">收款</button>
+              <button type="button" data-edit="${escapeHtml(customer.id)}">编辑</button>
             </div>
           </td>
         </tr>
@@ -955,6 +1127,7 @@ function render() {
   renderDashboard();
   renderKanban();
   renderCustomerTable();
+  renderPayments();
   renderActivities();
   renderAssistant();
   if (currentUser.role === "admin") renderUsers();
@@ -967,6 +1140,7 @@ function setView(view) {
     dashboard: "Dashboard",
     pipeline: "销售看板",
     customers: "客户状态",
+    payments: "收款管理",
     activities: "跟进记录",
     assistant: "Closing Assistant",
     accounts: "团队账号",
@@ -992,6 +1166,15 @@ function openCustomerForm(id) {
   document.querySelector("#dealStage").value = customer?.stage || settings.stages[0];
   document.querySelector("#dealValue").value = formatAmount(customer?.dealValue || 0);
   document.querySelector("#collectedAmount").value = formatAmount(customer?.collectedAmount || 0);
+  document.querySelector("#paymentProgram").value = customer?.programPackage || "";
+  document.querySelector("#paymentTotalBeforeSst").value = formatAmount(customer?.totalBeforeSst || 0);
+  document.querySelector("#paymentSstRate").value = formatAmount(customer?.sstRate || 0);
+  document.querySelector("#paymentTotalAmount").value = formatAmount(customer?.totalAmount || customer?.dealValue || 0);
+  document.querySelector("#paymentFirstPayment").value = formatAmount(customer?.firstPayment || 0);
+  document.querySelector("#paymentFirstPaymentDate").value = customer?.firstPaymentDate || "";
+  document.querySelector("#paymentMonthlyInstallment").value = formatAmount(customer?.monthlyInstallment || 0);
+  document.querySelector("#paymentTotalTerms").value = customer?.totalTerms || "";
+  document.querySelector("#paymentDay").value = customer?.paymentDay || "";
   document.querySelector("#expectedClose").value = customer?.expectedClose || todayISO();
   document.querySelector("#boosterComment").value = customer?.boosterComment || "";
   document.querySelector("#nextFollowUp").value = customer?.nextFollowUp || todayISO();
@@ -1050,6 +1233,34 @@ function openActivityForm(customerId = "") {
   document.querySelector("#activityAttachmentInput").value = "";
   updateAttachmentPreview("#activityAttachmentInput", "#activityAttachmentPreview");
   els.activityDialog.showModal();
+}
+
+function openPaymentForm(customerId = "") {
+  const customer = getCustomer(customerId) || state.customers[0];
+  if (!customer) {
+    showStatus("还没有客户，先新增客户后才可以记录收款。", true);
+    return;
+  }
+  document.querySelector("#paymentCustomer").value = customer.id;
+  document.querySelector("#paymentDate").value = todayISO();
+  document.querySelector("#paymentTermNo").value = customerPayments(customer.id).length + 1;
+  document.querySelector("#paymentAmount").value = formatAmount(customer.monthlyInstallment || paymentBalance(customer) || 0);
+  document.querySelector("#paymentMethod").value = "";
+  document.querySelector("#paymentSlipReceived").value = "Yes";
+  document.querySelector("#paymentRemark").value = "";
+  document.querySelector("#paymentFormError").hidden = true;
+  els.paymentDialog.showModal();
+}
+
+async function deletePayment(id) {
+  const payment = (state.payments || []).find((item) => item.id === id);
+  if (!payment) return;
+  const customer = getCustomer(payment.customerId);
+  const confirmed = window.confirm(`确定删除 ${customer?.name || "这个客户"} 的 ${money(payment.amount)} 收款记录？`);
+  if (!confirmed) return;
+  await api(`/api/payments/${encodeURIComponent(id)}`, { method: "DELETE" });
+  showStatus("收款记录已删除。");
+  await loadState();
 }
 
 function updateDealValueVisibility() {
@@ -1519,6 +1730,8 @@ els.navItems.forEach((item) => {
   els.ownerFilter,
   els.stageOwnerFilter,
   els.customerOwnerFilter,
+  els.paymentOwnerFilter,
+  els.paymentStatusFilter,
   els.activityOwnerFilter,
   els.statusFilter,
   els.sourceFilter,
@@ -1709,6 +1922,18 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const paymentButton = event.target.closest("[data-add-payment]");
+  if (paymentButton) {
+    openPaymentForm(paymentButton.dataset.addPayment);
+    return;
+  }
+
+  const deletePaymentButton = event.target.closest("[data-delete-payment]");
+  if (deletePaymentButton) {
+    deletePayment(deletePaymentButton.dataset.deletePayment).catch((error) => showStatus(error.message, true));
+    return;
+  }
+
   const toggleActivityButton = event.target.closest("[data-toggle-activity-customer]");
   if (toggleActivityButton) {
     const customerId = toggleActivityButton.dataset.toggleActivityCustomer;
@@ -1780,6 +2005,15 @@ els.customerForm.addEventListener("submit", async (event) => {
       collectedAmount: isWonStatus(document.querySelector("#customerStatus").value)
         ? parseAmount(document.querySelector("#collectedAmount").value)
         : 0,
+      programPackage: document.querySelector("#paymentProgram").value.trim(),
+      totalBeforeSst: parseAmount(document.querySelector("#paymentTotalBeforeSst").value),
+      sstRate: parseAmount(document.querySelector("#paymentSstRate").value),
+      totalAmount: parseAmount(document.querySelector("#paymentTotalAmount").value),
+      firstPayment: parseAmount(document.querySelector("#paymentFirstPayment").value),
+      firstPaymentDate: document.querySelector("#paymentFirstPaymentDate").value,
+      monthlyInstallment: parseAmount(document.querySelector("#paymentMonthlyInstallment").value),
+      totalTerms: Number(document.querySelector("#paymentTotalTerms").value || 0),
+      paymentDay: Number(document.querySelector("#paymentDay").value || 0),
       stage: document.querySelector("#dealStage").value,
       expectedClose: document.querySelector("#expectedClose").value,
       boosterComment: document.querySelector("#boosterComment").value.trim(),
@@ -1806,6 +2040,9 @@ els.customerForm.addEventListener("submit", async (event) => {
     }
     if (isWonStatus(customer.status) && customer.dealValue <= 0) {
       throw new Error("成交客户必须填写 Sales Amount");
+    }
+    if (!customer.totalAmount && customer.dealValue) {
+      customer.totalAmount = customer.dealValue;
     }
 
     const saved = await api("/api/customers", {
@@ -1866,6 +2103,36 @@ els.activityForm.addEventListener("submit", async (event) => {
     await loadState();
   } catch (error) {
     showStatus(error.message, true);
+  }
+});
+
+els.paymentForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const error = document.querySelector("#paymentFormError");
+  error.hidden = true;
+  try {
+    const payment = {
+      customerId: document.querySelector("#paymentCustomer").value,
+      paymentDate: document.querySelector("#paymentDate").value,
+      termNo: Number(document.querySelector("#paymentTermNo").value || 0),
+      amount: parseAmount(document.querySelector("#paymentAmount").value),
+      method: document.querySelector("#paymentMethod").value.trim(),
+      slipReceived: document.querySelector("#paymentSlipReceived").value,
+      remark: document.querySelector("#paymentRemark").value.trim()
+    };
+    if (!payment.customerId || !payment.paymentDate || payment.amount <= 0) {
+      throw new Error("请选择客户、收款日期，并填写大过 0 的 Amount Paid。");
+    }
+    await api("/api/payments", {
+      method: "POST",
+      body: JSON.stringify(payment)
+    });
+    els.paymentDialog.close();
+    showStatus("收款记录已保存到数据库。");
+    await loadState();
+  } catch (exception) {
+    error.textContent = `保存失败：${exception.message}`;
+    error.hidden = false;
   }
 });
 

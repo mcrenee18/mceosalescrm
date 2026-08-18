@@ -229,6 +229,15 @@ def init_db() -> None:
                 collected_value REAL NOT NULL DEFAULT 0,
                 stage TEXT NOT NULL,
                 expected_close TEXT NOT NULL,
+                program_package TEXT,
+                total_before_sst REAL NOT NULL DEFAULT 0,
+                sst_rate REAL NOT NULL DEFAULT 0,
+                total_amount REAL NOT NULL DEFAULT 0,
+                first_payment REAL NOT NULL DEFAULT 0,
+                first_payment_date TEXT,
+                monthly_installment REAL NOT NULL DEFAULT 0,
+                total_terms INTEGER NOT NULL DEFAULT 0,
+                payment_day INTEGER NOT NULL DEFAULT 0,
                 next_follow_up TEXT NOT NULL,
                 note TEXT,
                 created_at TEXT NOT NULL,
@@ -242,6 +251,19 @@ def init_db() -> None:
                 date TEXT NOT NULL,
                 owner TEXT NOT NULL,
                 note TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(customer_id) REFERENCES customers(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS payments (
+                id TEXT PRIMARY KEY,
+                customer_id TEXT NOT NULL,
+                payment_date TEXT NOT NULL,
+                term_no INTEGER NOT NULL DEFAULT 0,
+                amount REAL NOT NULL DEFAULT 0,
+                method TEXT,
+                slip_received TEXT,
+                remark TEXT,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(customer_id) REFERENCES customers(id) ON DELETE CASCADE
             );
@@ -302,6 +324,20 @@ def ensure_schema(conn) -> None:
         conn.execute("ALTER TABLE customers ADD COLUMN collected_value REAL NOT NULL DEFAULT 0")
     if not column_exists(conn, "customers", "booster_comment"):
         conn.execute("ALTER TABLE customers ADD COLUMN booster_comment TEXT")
+    customer_payment_columns = {
+        "program_package": "TEXT",
+        "total_before_sst": "REAL NOT NULL DEFAULT 0",
+        "sst_rate": "REAL NOT NULL DEFAULT 0",
+        "total_amount": "REAL NOT NULL DEFAULT 0",
+        "first_payment": "REAL NOT NULL DEFAULT 0",
+        "first_payment_date": "TEXT",
+        "monthly_installment": "REAL NOT NULL DEFAULT 0",
+        "total_terms": "INTEGER NOT NULL DEFAULT 0",
+        "payment_day": "INTEGER NOT NULL DEFAULT 0",
+    }
+    for column, definition in customer_payment_columns.items():
+        if not column_exists(conn, "customers", column):
+            conn.execute(f"ALTER TABLE customers ADD COLUMN {column} {definition}")
     if not column_exists(conn, "activities", "attachments"):
         conn.execute("ALTER TABLE activities ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]'")
 
@@ -597,6 +633,15 @@ def normalize_customer(raw: dict) -> dict:
         "stage": str(raw.get("stage") or STAGES[0]).strip(),
         "expectedClose": str(raw.get("expectedClose") or raw.get("expected_close") or "").strip(),
         "boosterComment": str(raw.get("boosterComment") or raw.get("booster_comment") or "").strip(),
+        "programPackage": str(raw.get("programPackage") or raw.get("program_package") or "").strip(),
+        "totalBeforeSst": float(raw.get("totalBeforeSst") or raw.get("total_before_sst") or 0),
+        "sstRate": float(raw.get("sstRate") or raw.get("sst_rate") or 0),
+        "totalAmount": float(raw.get("totalAmount") or raw.get("total_amount") or 0),
+        "firstPayment": float(raw.get("firstPayment") or raw.get("first_payment") or 0),
+        "firstPaymentDate": str(raw.get("firstPaymentDate") or raw.get("first_payment_date") or "").strip(),
+        "monthlyInstallment": float(raw.get("monthlyInstallment") or raw.get("monthly_installment") or 0),
+        "totalTerms": int(float(raw.get("totalTerms") or raw.get("total_terms") or 0)),
+        "paymentDay": int(float(raw.get("paymentDay") or raw.get("payment_day") or 0)),
         "nextFollowUp": str(raw.get("nextFollowUp") or raw.get("next_follow_up") or "").strip(),
         "note": str(raw.get("note") or "").strip(),
     }
@@ -648,6 +693,19 @@ def normalize_activity(raw: dict) -> dict:
     }
 
 
+def normalize_payment(raw: dict) -> dict:
+    return {
+        "id": str(raw.get("id") or f"p{uuid.uuid4().hex[:12]}"),
+        "customerId": str(raw.get("customerId") or raw.get("customer_id") or "").strip(),
+        "paymentDate": str(raw.get("paymentDate") or raw.get("payment_date") or "").strip(),
+        "termNo": int(float(raw.get("termNo") or raw.get("term_no") or 0)),
+        "amount": float(raw.get("amount") or raw.get("amount_paid") or 0),
+        "method": str(raw.get("method") or raw.get("paymentMethod") or "").strip(),
+        "slipReceived": str(raw.get("slipReceived") or raw.get("slip_received") or "").strip(),
+        "remark": str(raw.get("remark") or raw.get("adminRemark") or "").strip(),
+    }
+
+
 def validate_customer(customer: dict) -> None:
     required = ["name", "phone", "source", "status", "owner", "stage", "expectedClose", "nextFollowUp"]
     missing = [field for field in required if not customer.get(field)]
@@ -664,6 +722,35 @@ def validate_activity(activity: dict) -> None:
         raise ValueError("Follow-up note or photo is required")
 
 
+def validate_payment(payment: dict) -> None:
+    required = ["customerId", "paymentDate"]
+    missing = [field for field in required if not payment.get(field)]
+    if missing:
+        raise ValueError(f"Missing payment fields: {', '.join(missing)}")
+    if payment["amount"] <= 0:
+        raise ValueError("Payment amount must be greater than zero")
+
+
+def update_collected_from_payments(conn, customer_id: str, allow_decrease: bool = False) -> None:
+    payment_row = conn.execute(
+        "SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE customer_id = ?",
+        (customer_id,),
+    ).fetchone()
+    customer_row = conn.execute(
+        "SELECT collected_value FROM customers WHERE id = ?",
+        (customer_id,),
+    ).fetchone()
+    if not customer_row:
+        return
+    payment_total = float(payment_row["total"] or 0)
+    current_total = float(customer_row["collected_value"] or 0)
+    collected_total = payment_total if allow_decrease else max(current_total, payment_total)
+    conn.execute(
+        "UPDATE customers SET collected_value = ?, updated_at = ? WHERE id = ?",
+        (collected_total, now_iso(), customer_id),
+    )
+
+
 def can_access_owner(user: dict, owner: str) -> bool:
     return user["role"] == "admin" or owner == user["ownerName"]
 
@@ -671,6 +758,7 @@ def can_access_owner(user: dict, owner: str) -> bool:
 def replace_all(conn: sqlite3.Connection, data: dict) -> None:
     customers = [normalize_customer(item) for item in data.get("customers", [])]
     activities = [normalize_activity(item) for item in data.get("activities", [])]
+    payments = [normalize_payment(item) for item in data.get("payments", [])]
     for customer in customers:
         validate_customer(customer)
 
@@ -680,8 +768,14 @@ def replace_all(conn: sqlite3.Connection, data: dict) -> None:
         validate_activity(activity)
         if activity["customerId"] in customer_ids:
             valid_activities.append(activity)
+    valid_payments = []
+    for payment in payments:
+        validate_payment(payment)
+        if payment["customerId"] in customer_ids:
+            valid_payments.append(payment)
 
     timestamp = now_iso()
+    conn.execute("DELETE FROM payments")
     conn.execute("DELETE FROM activities")
     conn.execute("DELETE FROM customers")
     for customer in customers:
@@ -689,14 +783,18 @@ def replace_all(conn: sqlite3.Connection, data: dict) -> None:
             """
             INSERT INTO customers (
                 id, name, phone, email, source, status, owner, deal_value, collected_value, stage,
-                expected_close, booster_comment, next_follow_up, note, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                expected_close, booster_comment, program_package, total_before_sst, sst_rate, total_amount,
+                first_payment, first_payment_date, monthly_installment, total_terms, payment_day,
+                next_follow_up, note, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 customer["id"], customer["name"], customer["phone"], customer["email"], customer["source"],
                 customer["status"], customer["owner"], customer["dealValue"], customer["collectedAmount"], customer["stage"],
-                customer["expectedClose"], customer["boosterComment"], customer["nextFollowUp"],
-                customer["note"], timestamp, timestamp,
+                customer["expectedClose"], customer["boosterComment"], customer["programPackage"],
+                customer["totalBeforeSst"], customer["sstRate"], customer["totalAmount"], customer["firstPayment"],
+                customer["firstPaymentDate"], customer["monthlyInstallment"], customer["totalTerms"],
+                customer["paymentDay"], customer["nextFollowUp"], customer["note"], timestamp, timestamp,
             ),
         )
 
@@ -712,12 +810,25 @@ def replace_all(conn: sqlite3.Connection, data: dict) -> None:
             ),
         )
 
+    for payment in valid_payments:
+        conn.execute(
+            """
+            INSERT INTO payments (id, customer_id, payment_date, term_no, amount, method, slip_received, remark, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                payment["id"], payment["customerId"], payment["paymentDate"], payment["termNo"],
+                payment["amount"], payment["method"], payment["slipReceived"], payment["remark"], timestamp,
+            ),
+        )
+
 
 def read_state(user: dict) -> dict:
     with db() as conn:
         if user["role"] == "admin":
             customer_rows = conn.execute("SELECT * FROM customers ORDER BY updated_at DESC, created_at DESC").fetchall()
             activity_rows = conn.execute("SELECT * FROM activities ORDER BY date DESC, created_at DESC").fetchall()
+            payment_rows = conn.execute("SELECT * FROM payments ORDER BY payment_date DESC, created_at DESC").fetchall()
         else:
             customer_rows = conn.execute(
                 "SELECT * FROM customers WHERE owner = ? ORDER BY updated_at DESC, created_at DESC",
@@ -732,6 +843,15 @@ def read_state(user: dict) -> dict:
                 """,
                 (user["ownerName"],),
             ).fetchall()
+            payment_rows = conn.execute(
+                """
+                SELECT p.* FROM payments p
+                JOIN customers c ON c.id = p.customer_id
+                WHERE c.owner = ?
+                ORDER BY p.payment_date DESC, p.created_at DESC
+                """,
+                (user["ownerName"],),
+            ).fetchall()
         settings = read_settings(conn)
 
     customers = [
@@ -740,6 +860,15 @@ def read_state(user: dict) -> dict:
             "source": row["source"], "status": row["status"], "owner": row["owner"],
             "dealValue": row["deal_value"], "collectedAmount": row["collected_value"], "stage": row["stage"],
             "expectedClose": row["expected_close"], "boosterComment": row["booster_comment"] or "",
+            "programPackage": row["program_package"] or "",
+            "totalBeforeSst": row["total_before_sst"],
+            "sstRate": row["sst_rate"],
+            "totalAmount": row["total_amount"],
+            "firstPayment": row["first_payment"],
+            "firstPaymentDate": row["first_payment_date"] or "",
+            "monthlyInstallment": row["monthly_installment"],
+            "totalTerms": row["total_terms"],
+            "paymentDay": row["payment_day"],
             "nextFollowUp": row["next_follow_up"], "note": row["note"],
         }
         for row in customer_rows
@@ -752,9 +881,18 @@ def read_state(user: dict) -> dict:
         }
         for row in activity_rows
     ]
+    payments = [
+        {
+            "id": row["id"], "customerId": row["customer_id"], "paymentDate": row["payment_date"],
+            "termNo": row["term_no"], "amount": row["amount"], "method": row["method"] or "",
+            "slipReceived": row["slip_received"] or "", "remark": row["remark"] or "",
+        }
+        for row in payment_rows
+    ]
     return {
         "customers": customers,
         "activities": activities,
+        "payments": payments,
         "user": user,
         "settings": settings,
         "meta": {"database": "postgres" if DATABASE_URL else "sqlite"},
@@ -853,6 +991,13 @@ class CRMHandler(SimpleHTTPRequestHandler):
                 self.save_activity(activity, user)
                 self.send_json({"ok": True, "activity": activity})
                 return
+            if path == "/api/payments":
+                user = self.current_user()
+                payment = normalize_payment(read_json(self))
+                validate_payment(payment)
+                self.save_payment(payment, user)
+                self.send_json({"ok": True, "payment": payment})
+                return
             if path == "/api/import":
                 self.require_admin()
                 with db() as conn:
@@ -924,8 +1069,15 @@ class CRMHandler(SimpleHTTPRequestHandler):
                 customer_id = unquote(parts[2])
                 self.require_customer_access(customer_id, user)
                 with db() as conn:
+                    conn.execute("DELETE FROM payments WHERE customer_id = ?", (customer_id,))
                     conn.execute("DELETE FROM activities WHERE customer_id = ?", (customer_id,))
                     conn.execute("DELETE FROM customers WHERE id = ?", (customer_id,))
+                self.send_json({"ok": True})
+                return
+            if len(parts) == 3 and parts[:2] == ["api", "payments"]:
+                user = self.current_user()
+                payment_id = unquote(parts[2])
+                self.delete_payment(payment_id, user)
                 self.send_json({"ok": True})
                 return
             if len(parts) == 3 and parts[:2] == ["api", "users"]:
@@ -1037,23 +1189,33 @@ class CRMHandler(SimpleHTTPRequestHandler):
                 """
                 INSERT INTO customers (
                     id, name, phone, email, source, status, owner, deal_value, collected_value, stage,
-                    expected_close, booster_comment, next_follow_up, note, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    expected_close, booster_comment, program_package, total_before_sst, sst_rate, total_amount,
+                    first_payment, first_payment_date, monthly_installment, total_terms, payment_day,
+                    next_follow_up, note, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name, phone = excluded.phone, email = excluded.email,
                     source = excluded.source, status = excluded.status, owner = excluded.owner,
                     deal_value = excluded.deal_value, collected_value = excluded.collected_value, stage = excluded.stage,
                     expected_close = excluded.expected_close, booster_comment = excluded.booster_comment,
+                    program_package = excluded.program_package, total_before_sst = excluded.total_before_sst,
+                    sst_rate = excluded.sst_rate, total_amount = excluded.total_amount,
+                    first_payment = excluded.first_payment, first_payment_date = excluded.first_payment_date,
+                    monthly_installment = excluded.monthly_installment, total_terms = excluded.total_terms,
+                    payment_day = excluded.payment_day,
                     next_follow_up = excluded.next_follow_up, note = excluded.note,
                     updated_at = excluded.updated_at
                 """,
                 (
                     customer["id"], customer["name"], customer["phone"], customer["email"], customer["source"],
                     customer["status"], customer["owner"], customer["dealValue"], customer["collectedAmount"], customer["stage"],
-                    customer["expectedClose"], customer["boosterComment"], customer["nextFollowUp"],
-                    customer["note"], created_at, timestamp,
+                    customer["expectedClose"], customer["boosterComment"], customer["programPackage"],
+                    customer["totalBeforeSst"], customer["sstRate"], customer["totalAmount"], customer["firstPayment"],
+                    customer["firstPaymentDate"], customer["monthlyInstallment"], customer["totalTerms"],
+                    customer["paymentDay"], customer["nextFollowUp"], customer["note"], created_at, timestamp,
                 ),
             )
+            update_collected_from_payments(conn, customer["id"])
 
     def save_activity(self, activity: dict, user: dict) -> None:
         customer = self.require_customer_access(activity["customerId"], user)
@@ -1070,6 +1232,40 @@ class CRMHandler(SimpleHTTPRequestHandler):
                     activity["owner"], activity["note"], json.dumps(activity["attachments"], ensure_ascii=False), now_iso(),
                 ),
             )
+
+    def save_payment(self, payment: dict, user: dict) -> None:
+        customer = self.require_customer_access(payment["customerId"], user)
+        with db() as conn:
+            conn.execute(
+                """
+                INSERT INTO payments (id, customer_id, payment_date, term_no, amount, method, slip_received, remark, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    payment["id"], payment["customerId"], payment["paymentDate"], payment["termNo"],
+                    payment["amount"], payment["method"], payment["slipReceived"], payment["remark"], now_iso(),
+                ),
+            )
+            update_collected_from_payments(conn, customer["id"])
+
+    def delete_payment(self, payment_id: str, user: dict) -> None:
+        with db() as conn:
+            row = conn.execute(
+                """
+                SELECT p.id, p.customer_id, c.owner
+                FROM payments p
+                JOIN customers c ON c.id = p.customer_id
+                WHERE p.id = ?
+                """,
+                (payment_id,),
+            ).fetchone()
+            if not row:
+                raise ValueError("Payment not found")
+            if not can_access_owner(user, row["owner"]):
+                raise PermissionError("Forbidden")
+            customer_id = row["customer_id"]
+            conn.execute("DELETE FROM payments WHERE id = ?", (payment_id,))
+            update_collected_from_payments(conn, customer_id, allow_decrease=True)
 
     def session_token(self) -> str | None:
         cookie_header = self.headers.get("Cookie")

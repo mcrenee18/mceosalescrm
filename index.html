@@ -54,6 +54,7 @@
           <button class="nav-item active" data-view="dashboard">Dashboard</button>
           <button class="nav-item" data-view="pipeline">销售看板</button>
           <button class="nav-item" data-view="customers">客户状态</button>
+          <button class="nav-item" data-view="payments">收款管理</button>
           <button class="nav-item" data-view="activities">跟进记录</button>
           <button class="nav-item" data-view="assistant">Closing Assistant</button>
           <button class="nav-item admin-only" data-view="accounts">团队账号</button>
@@ -189,6 +190,63 @@
                 </tr>
               </thead>
               <tbody id="customerTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="paymentsView" class="view">
+          <div class="section-heading table-heading">
+            <div>
+              <p class="eyebrow">Collections</p>
+              <h3>收款管理</h3>
+            </div>
+            <div class="filter-row">
+              <select id="paymentStatusFilter" aria-label="收款状态筛选">
+                <option value="all">全部收款状态</option>
+                <option value="overdue">已逾期</option>
+                <option value="due">本月应收</option>
+                <option value="complete">已收完</option>
+                <option value="setup">未设置付款计划</option>
+              </select>
+              <select id="paymentOwnerFilter" aria-label="付款负责人筛选">
+                <option value="all">全部负责人</option>
+              </select>
+            </div>
+          </div>
+          <div class="payment-metrics">
+            <article>
+              <span>Total Amount</span>
+              <strong id="paymentMetricTotal">RM 0.00</strong>
+            </article>
+            <article>
+              <span>Collected Amount</span>
+              <strong id="paymentMetricPaid">RM 0.00</strong>
+            </article>
+            <article>
+              <span>Balance</span>
+              <strong id="paymentMetricBalance">RM 0.00</strong>
+            </article>
+            <article>
+              <span>Overdue / Due</span>
+              <strong id="paymentMetricDue">0</strong>
+            </article>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>客户</th>
+                  <th>负责人</th>
+                  <th>Package</th>
+                  <th>Total Amount</th>
+                  <th>Collected</th>
+                  <th>Balance</th>
+                  <th>Next Due</th>
+                  <th>状态</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="paymentTable"></tbody>
             </table>
           </div>
         </section>
@@ -452,6 +510,42 @@
             <input id="collectedAmount" class="amount-input" inputmode="decimal" />
           </label>
           <label>
+            Program / Package
+            <input id="paymentProgram" placeholder="例如 MCEO Package" />
+          </label>
+          <label>
+            Total Before SST（RM）
+            <input id="paymentTotalBeforeSst" class="amount-input" inputmode="decimal" />
+          </label>
+          <label>
+            SST %
+            <input id="paymentSstRate" class="amount-input" inputmode="decimal" />
+          </label>
+          <label>
+            Total incl. SST（RM）
+            <input id="paymentTotalAmount" class="amount-input" inputmode="decimal" />
+          </label>
+          <label>
+            First Payment / Deposit（RM）
+            <input id="paymentFirstPayment" class="amount-input" inputmode="decimal" />
+          </label>
+          <label>
+            First Payment Date
+            <input id="paymentFirstPaymentDate" type="date" />
+          </label>
+          <label>
+            Monthly Installment（RM）
+            <input id="paymentMonthlyInstallment" class="amount-input" inputmode="decimal" />
+          </label>
+          <label>
+            Total Terms
+            <input id="paymentTotalTerms" type="number" min="0" step="1" />
+          </label>
+          <label>
+            Payment Day
+            <input id="paymentDay" type="number" min="1" max="31" step="1" placeholder="例如 7" />
+          </label>
+          <label>
             负责人
             <input id="customerOwner" required />
           </label>
@@ -551,6 +645,57 @@
         <div class="modal-actions">
           <button class="ghost-button" type="button" data-close-dialog>取消</button>
           <button class="primary-button" type="submit">保存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="paymentDialog" class="modal account-modal">
+      <form id="paymentForm" novalidate>
+        <div class="modal-heading">
+          <div>
+            <p class="eyebrow">Collection</p>
+            <h3>新增收款记录</h3>
+          </div>
+          <button class="icon-button" aria-label="关闭" type="button" data-close-dialog>×</button>
+        </div>
+        <div class="form-grid">
+          <label>
+            客户
+            <select id="paymentCustomer" required></select>
+          </label>
+          <label>
+            收款日期
+            <input id="paymentDate" type="date" required />
+          </label>
+          <label>
+            Term No.
+            <input id="paymentTermNo" type="number" min="0" step="1" />
+          </label>
+          <label>
+            Amount Paid（RM）
+            <input id="paymentAmount" class="amount-input" inputmode="decimal" required />
+          </label>
+          <label>
+            Payment Method
+            <input id="paymentMethod" placeholder="例如 Bank Transfer / Cash" />
+          </label>
+          <label>
+            Slip Received?
+            <select id="paymentSlipReceived">
+              <option value="Yes">Yes</option>
+              <option value="No">No</option>
+              <option value="Pending">Pending</option>
+            </select>
+          </label>
+        </div>
+        <label class="full-field">
+          Admin Remark
+          <textarea id="paymentRemark" rows="3" placeholder="例如：已核对收据 / 等待 Finance confirm"></textarea>
+        </label>
+        <p id="paymentFormError" class="form-error" hidden></p>
+        <div class="modal-actions">
+          <button class="ghost-button" type="button" data-close-dialog>取消</button>
+          <button class="primary-button" type="submit">保存收款</button>
         </div>
       </form>
     </dialog>
