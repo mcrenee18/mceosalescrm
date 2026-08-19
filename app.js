@@ -703,10 +703,9 @@ function renderSelectOptions() {
   const dealStage = document.querySelector("#dealStage");
   const selectedDealStage = dealStage.value;
   dealStage.innerHTML = "";
-  settings.stages.forEach((stage) => {
+  getCustomerStages().forEach((stage) => {
     dealStage.insertAdjacentHTML("beforeend", `<option value="${escapeHtml(stage)}">${escapeHtml(stage)}</option>`);
   });
-  ensureSelectOption(dealStage, boosterMonthFromDate(document.querySelector("#expectedClose")?.value));
   dealStage.value = [...dealStage.options].some((option) => option.value === selectedDealStage)
     ? selectedDealStage
     : dealStage.options[0]?.value || "";
