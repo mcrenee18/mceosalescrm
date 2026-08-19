@@ -415,6 +415,28 @@ function boosterMonthFromDate(dateString) {
   return `MDS ${mdsMonthLabels[date.getMonth()]}`;
 }
 
+function currentMdsStages() {
+  const currentMonth = new Date().getMonth();
+  const stages = [];
+  for (let month = currentMonth; month >= 0; month -= 1) {
+    stages.push(`MDS ${mdsMonthLabels[month]}`);
+  }
+  return stages;
+}
+
+function mdsMonthIndex(stage) {
+  const match = String(stage || "").trim().match(/^MDS\s+([A-Z]{3})$/i);
+  if (!match) return -1;
+  return mdsMonthLabels.indexOf(match[1].toUpperCase());
+}
+
+function mdsSortRank(stage) {
+  const index = mdsMonthIndex(stage);
+  if (index < 0) return 999;
+  const currentMonth = new Date().getMonth();
+  return index <= currentMonth ? currentMonth - index : 100 + index;
+}
+
 function ensureSelectOption(select, value) {
   if (!select || !value || [...select.options].some((option) => option.value === value)) return;
   select.insertAdjacentHTML("beforeend", `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`);
@@ -549,7 +571,18 @@ function getOwners() {
 }
 
 function getCustomerStages() {
-  return [...new Set([...settings.stages, ...state.customers.map((customer) => customer.stage)].filter(Boolean))];
+  return [
+    ...new Set([
+      ...currentMdsStages(),
+      ...settings.stages,
+      ...state.customers.map((customer) => customer.stage)
+    ].filter(Boolean))
+  ].sort((a, b) => {
+    const rankA = mdsSortRank(a);
+    const rankB = mdsSortRank(b);
+    if (rankA !== rankB) return rankA - rankB;
+    return a.localeCompare(b);
+  });
 }
 
 function queryText(customer) {
