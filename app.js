@@ -977,7 +977,7 @@ function renderCustomerTable() {
           <td>${escapeHtml(customer.owner)}</td>
           <td>${escapeHtml(customer.stage)}</td>
           <td>${escapeHtml(customer.nextFollowUp)}</td>
-          <td>${paymentPlanTotal(customer) ? money(paymentPlanTotal(customer)) : "-"}</td>
+          <td>${paymentPlanBeforeSst(customer) ? money(paymentPlanBeforeSst(customer)) : "-"}</td>
           <td>${collectedTotal(customer) ? money(collectedTotal(customer)) : "-"}</td>
           <td>
             <div class="table-actions">
@@ -1015,7 +1015,7 @@ function renderPayments() {
       return a.nextDue.localeCompare(b.nextDue);
     });
 
-  const total = customers.reduce((sum, item) => sum + item.total, 0);
+  const total = customers.reduce((sum, item) => sum + item.totalBeforeSst, 0);
   const paid = customers.reduce((sum, item) => sum + item.paid, 0);
   const balance = customers.reduce((sum, item) => sum + item.balance, 0);
   const due = customers.filter((item) => ["overdue", "due"].includes(item.status.key)).length;
@@ -1031,7 +1031,7 @@ function renderPayments() {
   }
 
   table.innerHTML = customers
-    .map(({ customer, status, total, totalBeforeSst, paid, balance, nextDue, logs }) => {
+    .map(({ customer, status, totalBeforeSst, paid, balance, nextDue, logs }) => {
       const latestPayment = logs[0];
       const progress = totalBeforeSst > 0 ? Math.min(Math.round((paid / totalBeforeSst) * 100), 100) : 0;
       return `
@@ -1043,7 +1043,7 @@ function renderPayments() {
           </td>
           <td>${escapeHtml(customer.owner)}</td>
           <td>${escapeHtml(customer.programPackage || customer.source || "-")}</td>
-          <td>${total ? money(total) : "-"}</td>
+          <td>${totalBeforeSst ? money(totalBeforeSst) : "-"}</td>
           <td>
             <strong>${money(paid)}</strong>
             <div class="payment-progress"><span style="width:${progress}%"></span></div>
