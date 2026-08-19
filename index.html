@@ -513,7 +513,7 @@
             <select id="customerStatus"></select>
           </label>
           <label id="dealValueField" hidden>
-            Sales Amount（RM）
+            Sales Amount Include SST（RM）
             <input id="dealValue" class="amount-input" inputmode="decimal" />
           </label>
           <label id="collectedAmountField" hidden>
@@ -522,24 +522,32 @@
           </label>
           <label>
             Program / Package
-            <input id="paymentProgram" placeholder="例如 MCEO Package" />
+            <select id="paymentProgram">
+              <option value="MCEO Lifetime">MCEO Lifetime</option>
+              <option value="MCEO One Year">MCEO One Year</option>
+              <option value="Offline Course">Offline Course</option>
+              <option value="Challenges">Challenges</option>
+              <option value="Others">Others</option>
+            </select>
+          </label>
+          <label id="paymentProgramOtherField" hidden>
+            Other Program / Package
+            <input id="paymentProgramOther" placeholder="填写其他 package" />
           </label>
           <label>
-            Total Before SST（RM）
+            First Payment Before SST（RM）
             <input id="paymentTotalBeforeSst" class="amount-input" inputmode="decimal" />
           </label>
           <label>
-            SST %
-            <input id="paymentSstRate" class="amount-input" inputmode="decimal" />
+            SST Amount 8%（RM）
+            <input id="paymentSstAmount" class="amount-input" inputmode="decimal" readonly />
           </label>
           <label>
-            Total incl. SST（RM）
-            <input id="paymentTotalAmount" class="amount-input" inputmode="decimal" />
+            Total Collected incl. SST（RM）
+            <input id="paymentFirstPayment" class="amount-input" inputmode="decimal" readonly />
           </label>
-          <label>
-            First Payment / Deposit（RM）
-            <input id="paymentFirstPayment" class="amount-input" inputmode="decimal" />
-          </label>
+          <input id="paymentSstRate" type="hidden" value="8" />
+          <input id="paymentTotalAmount" type="hidden" />
           <label>
             First Payment Date
             <input id="paymentFirstPaymentDate" type="date" />
@@ -549,13 +557,10 @@
             <input id="paymentMonthlyInstallment" class="amount-input" inputmode="decimal" />
           </label>
           <label>
-            Total Terms
-            <input id="paymentTotalTerms" type="number" min="0" step="1" />
+            Total Terms（分多少期）
+            <input id="paymentTotalTerms" type="number" min="0" step="1" placeholder="例如 6 = 分 6 期付款" />
           </label>
-          <label>
-            Payment Day
-            <input id="paymentDay" type="number" min="1" max="31" step="1" placeholder="例如 7" />
-          </label>
+          <input id="paymentDay" type="hidden" />
           <label>
             负责人
             <input id="customerOwner" required />

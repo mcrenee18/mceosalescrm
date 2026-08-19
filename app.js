@@ -1,6 +1,8 @@
 const legacyStorageKey = "sales-crm-prototype-v1";
 const maxActivityPhotos = 3;
 const maxPhotoBytes = 900_000;
+const packageOptions = ["MCEO Lifetime", "MCEO One Year", "Offline Course", "Challenges"];
+const mdsMonthLabels = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 let settings = {
   companyName: "Sales CRM",
   tagline: "团队销售工作台",
@@ -272,7 +274,7 @@ function applySettings() {
   });
   document.querySelector("#monthTarget").textContent = money(settings.monthTarget);
   document.querySelector("#kanbanBoard").style.gridTemplateColumns =
-    `repeat(${settings.stages.length}, minmax(220px, 1fr))`;
+    `repeat(${getCustomerStages().length}, minmax(220px, 1fr))`;
   renderSettingsForm();
 }
 
@@ -404,6 +406,24 @@ function parseAmount(value) {
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function boosterMonthFromDate(dateString) {
+  if (!dateString) return "";
+  const date = new Date(`${dateString}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "";
+  return `MDS ${mdsMonthLabels[date.getMonth()]}`;
+}
+
+function ensureSelectOption(select, value) {
+  if (!select || !value || [...select.options].some((option) => option.value === value)) return;
+  select.insertAdjacentHTML("beforeend", `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`);
+}
+
+function paymentDayFromFirstPaymentDate(dateString) {
+  if (!dateString) return 0;
+  const date = new Date(`${dateString}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? 0 : date.getDate();
 }
 
 function getCustomer(id) {
@@ -637,10 +657,15 @@ function renderSelectOptions() {
     : "all";
 
   const dealStage = document.querySelector("#dealStage");
+  const selectedDealStage = dealStage.value;
   dealStage.innerHTML = "";
   settings.stages.forEach((stage) => {
-    dealStage.insertAdjacentHTML("beforeend", `<option>${escapeHtml(stage)}</option>`);
+    dealStage.insertAdjacentHTML("beforeend", `<option value="${escapeHtml(stage)}">${escapeHtml(stage)}</option>`);
   });
+  ensureSelectOption(dealStage, boosterMonthFromDate(document.querySelector("#expectedClose")?.value));
+  dealStage.value = [...dealStage.options].some((option) => option.value === selectedDealStage)
+    ? selectedDealStage
+    : dealStage.options[0]?.value || "";
 
   const activityCustomer = document.querySelector("#activityCustomer");
   const selectedActivityCustomer = activityCustomer.value;
@@ -821,7 +846,7 @@ function renderKanban() {
   const customers = filteredCustomers();
   const board = document.querySelector("#kanbanBoard");
 
-  board.innerHTML = settings.stages
+  board.innerHTML = getCustomerStages()
     .map((stage) => {
       const deals = customers.filter((customer) => customer.stage === stage);
       const collapsed = collapsedKanbanStages.has(stage);
@@ -1242,19 +1267,22 @@ function openCustomerForm(id) {
   document.querySelector("#customerStatus").value = customer?.status || settings.statuses[0].name;
   document.querySelector("#customerOwner").value =
     customer?.owner || (currentUser.role === "sales" ? currentUser.ownerName : getOwners()[0] || "");
-  document.querySelector("#dealStage").value = customer?.stage || settings.stages[0];
   document.querySelector("#dealValue").value = formatAmount(customer?.dealValue || 0);
   document.querySelector("#collectedAmount").value = formatAmount(customer?.collectedAmount || 0);
-  document.querySelector("#paymentProgram").value = customer?.programPackage || "";
-  document.querySelector("#paymentTotalBeforeSst").value = formatAmount(customer?.totalBeforeSst || 0);
-  document.querySelector("#paymentSstRate").value = formatAmount(customer?.sstRate || 0);
+  setPackageValue(customer?.programPackage || "");
+  const firstPaymentBeforeSst = Number(customer?.totalBeforeSst || 0)
+    || (Number(customer?.firstPayment || customer?.collectedAmount || 0) / 1.08);
+  document.querySelector("#paymentTotalBeforeSst").value = formatAmount(firstPaymentBeforeSst);
+  document.querySelector("#paymentSstRate").value = "8";
   document.querySelector("#paymentTotalAmount").value = formatAmount(customer?.totalAmount || customer?.dealValue || 0);
-  document.querySelector("#paymentFirstPayment").value = formatAmount(customer?.firstPayment || 0);
   document.querySelector("#paymentFirstPaymentDate").value = customer?.firstPaymentDate || "";
   document.querySelector("#paymentMonthlyInstallment").value = formatAmount(customer?.monthlyInstallment || 0);
   document.querySelector("#paymentTotalTerms").value = customer?.totalTerms || "";
-  document.querySelector("#paymentDay").value = customer?.paymentDay || "";
   document.querySelector("#expectedClose").value = customer?.expectedClose || todayISO();
+  document.querySelector("#dealStage").value = customer?.stage || boosterMonthFromDate(document.querySelector("#expectedClose").value) || settings.stages[0];
+  syncBoosterMonthFromDate();
+  document.querySelector("#paymentDay").value = paymentDayFromFirstPaymentDate(document.querySelector("#paymentFirstPaymentDate").value);
+  updateSstTotals();
   document.querySelector("#boosterComment").value = customer?.boosterComment || "";
   document.querySelector("#nextFollowUp").value = customer?.nextFollowUp || todayISO();
   document.querySelector("#customerFollowUpDate").value = todayISO();
@@ -1299,6 +1327,55 @@ function renderCustomerHistory(customerId) {
         )
         .join("")
     : '<div class="empty-state">还没有跟进记录。</div>';
+}
+
+function setPackageValue(value = "") {
+  const programSelect = document.querySelector("#paymentProgram");
+  const otherField = document.querySelector("#paymentProgramOtherField");
+  const otherInput = document.querySelector("#paymentProgramOther");
+  if (packageOptions.includes(value)) {
+    programSelect.value = value;
+    otherInput.value = "";
+  } else if (value) {
+    programSelect.value = "Others";
+    otherInput.value = value;
+  } else {
+    programSelect.value = packageOptions[0];
+    otherInput.value = "";
+  }
+  otherField.hidden = programSelect.value !== "Others";
+  otherInput.required = programSelect.value === "Others";
+}
+
+function selectedPackageValue() {
+  const programSelect = document.querySelector("#paymentProgram");
+  const otherInput = document.querySelector("#paymentProgramOther");
+  return programSelect.value === "Others" ? otherInput.value.trim() : programSelect.value;
+}
+
+function updatePackageOtherVisibility() {
+  const programSelect = document.querySelector("#paymentProgram");
+  const otherField = document.querySelector("#paymentProgramOtherField");
+  const otherInput = document.querySelector("#paymentProgramOther");
+  otherField.hidden = programSelect.value !== "Others";
+  otherInput.required = programSelect.value === "Others";
+}
+
+function updateSstTotals() {
+  const beforeSst = parseAmount(document.querySelector("#paymentTotalBeforeSst").value);
+  const sstAmount = beforeSst * 0.08;
+  const totalCollected = beforeSst + sstAmount;
+  document.querySelector("#paymentSstRate").value = "8";
+  document.querySelector("#paymentSstAmount").value = formatAmount(sstAmount);
+  document.querySelector("#paymentFirstPayment").value = formatAmount(totalCollected);
+  document.querySelector("#collectedAmount").value = formatAmount(totalCollected);
+}
+
+function syncBoosterMonthFromDate() {
+  const boosterMonth = boosterMonthFromDate(document.querySelector("#expectedClose").value);
+  const dealStage = document.querySelector("#dealStage");
+  ensureSelectOption(dealStage, boosterMonth);
+  if (boosterMonth) dealStage.value = boosterMonth;
 }
 
 function openActivityForm(customerId = "") {
@@ -1349,11 +1426,13 @@ function updateDealValueVisibility() {
   const input = document.querySelector("#dealValue");
   const collectedInput = document.querySelector("#collectedAmount");
   field.hidden = !won;
-  collectedField.hidden = !won;
+  collectedField.hidden = true;
   input.required = won;
   if (!won) {
     input.value = formatAmount(0);
     collectedInput.value = formatAmount(0);
+  } else {
+    updateSstTotals();
   }
 }
 
@@ -1847,6 +1926,12 @@ els.assistantSaveButton?.addEventListener("click", () => {
 els.assistantMicButton?.addEventListener("click", toggleAssistantSpeech);
 
 document.querySelector("#customerStatus").addEventListener("change", updateDealValueVisibility);
+document.querySelector("#expectedClose").addEventListener("change", syncBoosterMonthFromDate);
+document.querySelector("#paymentProgram").addEventListener("change", updatePackageOtherVisibility);
+document.querySelector("#paymentTotalBeforeSst").addEventListener("input", updateSstTotals);
+document.querySelector("#paymentFirstPaymentDate").addEventListener("change", () => {
+  document.querySelector("#paymentDay").value = paymentDayFromFirstPaymentDate(document.querySelector("#paymentFirstPaymentDate").value);
+});
 document.querySelector("#customerAttachmentInput").addEventListener("change", () => {
   updateAttachmentPreview("#customerAttachmentInput", "#customerAttachmentPreview");
 });
@@ -2070,6 +2155,13 @@ els.customerForm.addEventListener("submit", async (event) => {
   saveButton.textContent = "保存中...";
 
   try {
+    syncBoosterMonthFromDate();
+    updateSstTotals();
+    const dealValue = isWonStatus(document.querySelector("#customerStatus").value)
+      ? parseAmount(document.querySelector("#dealValue").value)
+      : 0;
+    const firstPaymentBeforeSst = parseAmount(document.querySelector("#paymentTotalBeforeSst").value);
+    const firstPaymentTotal = parseAmount(document.querySelector("#paymentFirstPayment").value);
     const customer = {
       id: document.querySelector("#customerId").value,
       name: document.querySelector("#customerName").value.trim(),
@@ -2078,21 +2170,17 @@ els.customerForm.addEventListener("submit", async (event) => {
       source: document.querySelector("#customerSource").value.trim(),
       status: document.querySelector("#customerStatus").value,
       owner: document.querySelector("#customerOwner").value.trim(),
-      dealValue: isWonStatus(document.querySelector("#customerStatus").value)
-        ? parseAmount(document.querySelector("#dealValue").value)
-        : 0,
-      collectedAmount: isWonStatus(document.querySelector("#customerStatus").value)
-        ? parseAmount(document.querySelector("#collectedAmount").value)
-        : 0,
-      programPackage: document.querySelector("#paymentProgram").value.trim(),
-      totalBeforeSst: parseAmount(document.querySelector("#paymentTotalBeforeSst").value),
-      sstRate: parseAmount(document.querySelector("#paymentSstRate").value),
-      totalAmount: parseAmount(document.querySelector("#paymentTotalAmount").value),
-      firstPayment: parseAmount(document.querySelector("#paymentFirstPayment").value),
+      dealValue,
+      collectedAmount: isWonStatus(document.querySelector("#customerStatus").value) ? firstPaymentTotal : 0,
+      programPackage: selectedPackageValue(),
+      totalBeforeSst: firstPaymentBeforeSst,
+      sstRate: 8,
+      totalAmount: dealValue,
+      firstPayment: firstPaymentTotal,
       firstPaymentDate: document.querySelector("#paymentFirstPaymentDate").value,
       monthlyInstallment: parseAmount(document.querySelector("#paymentMonthlyInstallment").value),
       totalTerms: Number(document.querySelector("#paymentTotalTerms").value || 0),
-      paymentDay: Number(document.querySelector("#paymentDay").value || 0),
+      paymentDay: paymentDayFromFirstPaymentDate(document.querySelector("#paymentFirstPaymentDate").value),
       stage: document.querySelector("#dealStage").value,
       expectedClose: document.querySelector("#expectedClose").value,
       boosterComment: document.querySelector("#boosterComment").value.trim(),
@@ -2118,10 +2206,10 @@ els.customerForm.addEventListener("submit", async (event) => {
       throw new Error("Email 格式不正确");
     }
     if (isWonStatus(customer.status) && customer.dealValue <= 0) {
-      throw new Error("成交客户必须填写 Sales Amount");
+      throw new Error("成交客户必须填写 Sales Amount Include SST");
     }
-    if (!customer.totalAmount && customer.dealValue) {
-      customer.totalAmount = customer.dealValue;
+    if (document.querySelector("#paymentProgram").value === "Others" && !customer.programPackage) {
+      throw new Error("请选择或填写 Program / Package");
     }
 
     const saved = await api("/api/customers", {
