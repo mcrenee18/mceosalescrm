@@ -462,6 +462,19 @@ function paymentPlanTotal(customer) {
   return Number(customer.totalAmount || customer.dealValue || 0);
 }
 
+function paymentPlanBeforeSst(customer) {
+  const total = paymentPlanTotal(customer);
+  if (!total) return 0;
+  const sstRate = Number(customer.sstRate || 0);
+  const firstPaymentBeforeSst = Number(customer.totalBeforeSst || 0);
+  const firstPaymentInclSst = Number(customer.firstPayment || 0);
+  const looksLikeSstIncluded = sstRate > 0 || (
+    firstPaymentBeforeSst > 0 &&
+    Math.abs(firstPaymentInclSst - firstPaymentBeforeSst * 1.08) < 0.02
+  );
+  return looksLikeSstIncluded ? total / (1 + (sstRate || 8) / 100) : total;
+}
+
 function loggedCollected(customer) {
   return customerPayments(customer.id).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
 }
@@ -480,7 +493,7 @@ function collectedTotal(customer) {
 }
 
 function paymentBalance(customer) {
-  return Math.max(paymentPlanTotal(customer) - collectedTotal(customer), 0);
+  return Math.max(paymentPlanBeforeSst(customer) - collectedTotal(customer), 0);
 }
 
 function addMonths(dateString, monthCount) {
@@ -982,6 +995,7 @@ function renderPayments() {
       customer,
       status: paymentStatus(customer),
       total: paymentPlanTotal(customer),
+      totalBeforeSst: paymentPlanBeforeSst(customer),
       paid: collectedTotal(customer),
       balance: paymentBalance(customer),
       nextDue: nextPaymentDue(customer),
@@ -1010,9 +1024,9 @@ function renderPayments() {
   }
 
   table.innerHTML = customers
-    .map(({ customer, status, total, paid, balance, nextDue, logs }) => {
+    .map(({ customer, status, total, totalBeforeSst, paid, balance, nextDue, logs }) => {
       const latestPayment = logs[0];
-      const progress = total > 0 ? Math.min(Math.round((paid / total) * 100), 100) : 0;
+      const progress = totalBeforeSst > 0 ? Math.min(Math.round((paid / totalBeforeSst) * 100), 100) : 0;
       return `
         <tr>
           <td>
