@@ -444,8 +444,17 @@ function loggedCollected(customer) {
   return customerPayments(customer.id).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
 }
 
+function storedCollectedBeforeSst(customer) {
+  const stored = Number(customer.collectedAmount || 0);
+  const beforeSst = Number(customer.totalBeforeSst || 0);
+  if (beforeSst > 0 && Math.abs(stored - beforeSst * 1.08) < 0.02) {
+    return beforeSst;
+  }
+  return stored;
+}
+
 function collectedTotal(customer) {
-  return Math.max(Number(customer.collectedAmount || 0), loggedCollected(customer));
+  return Math.max(storedCollectedBeforeSst(customer), loggedCollected(customer));
 }
 
 function paymentBalance(customer) {
@@ -465,7 +474,9 @@ function addMonths(dateString, monthCount) {
 function nextPaymentDue(customer) {
   if (paymentBalance(customer) <= 0) return "";
   const payments = customerPayments(customer.id);
-  const paidTerms = payments.filter((payment) => Number(payment.amount || 0) > 0).length;
+  const loggedTerms = payments.filter((payment) => Number(payment.amount || 0) > 0).length;
+  const hasFirstPayment = Number(customer.firstPayment || 0) > 0 || storedCollectedBeforeSst(customer) > 0;
+  const paidTerms = Math.max(loggedTerms, hasFirstPayment ? 1 : 0);
   const terms = Number(customer.totalTerms || 0);
   if (terms > 0 && paidTerms >= terms) return "";
   const baseDate = customer.firstPaymentDate || customer.expectedClose || "";
@@ -522,7 +533,7 @@ function monthlyCollectedFor(customers, currentKey) {
   const manualCollected = customers
     .filter((customer) => !customerPayments(customer.id).length)
     .filter((customer) => isWonStatus(customer.status) && String(customer.expectedClose || "").startsWith(currentKey))
-    .reduce((sum, customer) => sum + Number(customer.collectedAmount || 0), 0);
+    .reduce((sum, customer) => sum + storedCollectedBeforeSst(customer), 0);
   return paymentTotal + manualCollected;
 }
 
@@ -734,7 +745,7 @@ function renderDashboard() {
   document.querySelector("#targetProgress").style.width = `${progress}%`;
   document.querySelector("#monthTarget").textContent = money(remaining);
   document.querySelector("#targetCopy").textContent =
-    `Collected 目标 ${money(dashboardTarget)} · 已收 ${money(monthlyCollected)}（${progress}%）`;
+    `Collected Before SST 目标 ${money(dashboardTarget)} · 已收 ${money(monthlyCollected)}（${progress}%）`;
 
   renderTeamList();
   renderDueList(dueToday);
@@ -806,7 +817,7 @@ function renderTeamList() {
             </div>
             <div class="mini-progress"><span style="width:${row.percent}%"></span></div>
             <div class="owner-meta">
-              KPI ${money(row.ownerTarget)} · ${row.gap >= 0 ? "超出" : "还差"} ${money(Math.abs(row.gap))} · 转化率 ${row.conversion}% · ${row.ownerActivities} 条跟进
+              Before SST KPI ${money(row.ownerTarget)} · ${row.gap >= 0 ? "超出" : "还差"} ${money(Math.abs(row.gap))} · 转化率 ${row.conversion}% · ${row.ownerActivities} 条跟进
             </div>
           </div>
           <span class="team-status">${statusLabel}</span>
@@ -1082,7 +1093,7 @@ function renderUsers() {
           <div>
             <strong>${escapeHtml(user.displayName)}</strong>
             <div class="owner-meta">@${escapeHtml(user.username)} · ${user.role === "admin" ? "管理员" : "销售"}</div>
-            ${user.role === "sales" ? `<div class="owner-meta">Collected KPI ${money(user.monthlyTarget || settings.monthTarget)}</div>` : ""}
+            ${user.role === "sales" ? `<div class="owner-meta">Collected Before SST KPI ${money(user.monthlyTarget || settings.monthTarget)}</div>` : ""}
           </div>
           <div class="user-actions">
             <button class="ghost-button" type="button" data-edit-user="${escapeHtml(user.id)}">编辑</button>
@@ -1368,7 +1379,7 @@ function updateSstTotals() {
   document.querySelector("#paymentSstRate").value = "8";
   document.querySelector("#paymentSstAmount").value = formatAmount(sstAmount);
   document.querySelector("#paymentFirstPayment").value = formatAmount(totalCollected);
-  document.querySelector("#collectedAmount").value = formatAmount(totalCollected);
+  document.querySelector("#collectedAmount").value = formatAmount(beforeSst);
 }
 
 function syncBoosterMonthFromDate() {
@@ -2171,7 +2182,7 @@ els.customerForm.addEventListener("submit", async (event) => {
       status: document.querySelector("#customerStatus").value,
       owner: document.querySelector("#customerOwner").value.trim(),
       dealValue,
-      collectedAmount: isWonStatus(document.querySelector("#customerStatus").value) ? firstPaymentTotal : 0,
+      collectedAmount: isWonStatus(document.querySelector("#customerStatus").value) ? firstPaymentBeforeSst : 0,
       programPackage: selectedPackageValue(),
       totalBeforeSst: firstPaymentBeforeSst,
       sstRate: 8,
@@ -2288,7 +2299,7 @@ els.paymentForm.addEventListener("submit", async (event) => {
       remark: document.querySelector("#paymentRemark").value.trim()
     };
     if (!payment.customerId || !payment.paymentDate || payment.amount <= 0) {
-      throw new Error("请选择客户、收款日期，并填写大过 0 的 Amount Paid。");
+      throw new Error("请选择客户、收款日期，并填写大过 0 的 Amount Paid Before SST。");
     }
     await api("/api/payments", {
       method: "POST",

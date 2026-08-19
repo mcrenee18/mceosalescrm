@@ -62,7 +62,7 @@
         </nav>
 
         <div class="sidebar-panel">
-          <span class="panel-label">距离 Collected 目标还差</span>
+          <span class="panel-label">距离 Collected Before SST 目标还差</span>
           <strong id="monthTarget">RM 180,000</strong>
           <div class="progress-track" aria-hidden="true">
             <div id="targetProgress" class="progress-fill"></div>
@@ -101,9 +101,9 @@
               <p>包含客户与潜在客户</p>
             </article>
             <article class="metric-card">
-              <span>本月 Collected Amount</span>
+              <span>本月 Collected Before SST</span>
               <strong id="metricMonthlySales">RM 0</strong>
-              <p>只计算本月已成交的 collected amount</p>
+              <p>只计算 before SST 的已收金额</p>
             </article>
             <article class="metric-card">
               <span>本月已成交</span>
@@ -196,7 +196,7 @@
                   <th>Booster 月份</th>
                   <th>下次跟进</th>
                   <th>Sales Amount</th>
-                  <th>Collected Amount</th>
+                  <th>Collected Before SST</th>
                   <th>操作</th>
                 </tr>
               </thead>
@@ -230,7 +230,7 @@
               <strong id="paymentMetricTotal">RM 0.00</strong>
             </article>
             <article>
-              <span>Collected Amount</span>
+              <span>Collected Before SST</span>
               <strong id="paymentMetricPaid">RM 0.00</strong>
             </article>
             <article>
@@ -250,7 +250,7 @@
                   <th>负责人</th>
                   <th>Package</th>
                   <th>Total Amount</th>
-                  <th>Collected</th>
+                  <th>Collected Before SST</th>
                   <th>Balance</th>
                   <th>Next Due</th>
                   <th>状态</th>
@@ -367,7 +367,7 @@
                   <input id="newPassword" type="password" autocomplete="new-password" required />
                 </label>
                 <label>
-                  每月 Collected KPI（RM）
+                  每月 Collected Before SST KPI（RM）
                   <input id="newMonthlyTarget" class="amount-input" inputmode="decimal" required />
                 </label>
                 <button class="primary-button" type="submit">创建账号</button>
@@ -455,7 +455,7 @@
                 <p class="settings-note">建议使用正方形 PNG/WebP，文件小于 1 MB。</p>
               </div>
               <label>
-                每月 Collected 目标（RM）
+                每月 Collected Before SST 目标（RM）
                 <input id="settingMonthTarget" class="amount-input" inputmode="decimal" required />
               </label>
               <label class="full-field">
@@ -517,7 +517,7 @@
             <input id="dealValue" class="amount-input" inputmode="decimal" />
           </label>
           <label id="collectedAmountField" hidden>
-            Collected Amount（RM）
+            Collected Before SST（RM）
             <input id="collectedAmount" class="amount-input" inputmode="decimal" />
           </label>
           <label>
@@ -688,7 +688,7 @@
             <input id="paymentTermNo" type="number" min="0" step="1" />
           </label>
           <label>
-            Amount Paid（RM）
+            Amount Paid Before SST（RM）
             <input id="paymentAmount" class="amount-input" inputmode="decimal" required />
           </label>
           <label>
@@ -743,7 +743,7 @@
             </select>
           </label>
           <label>
-            每月 Collected KPI（RM）
+            每月 Collected Before SST KPI（RM）
             <input id="editMonthlyTarget" class="amount-input" inputmode="decimal" />
           </label>
           <label>
