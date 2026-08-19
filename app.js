@@ -567,15 +567,22 @@ function monthlyCollectedFor(customers, currentKey) {
     .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const manualCollected = customers
     .filter((customer) => !customerPayments(customer.id).length)
-    .filter((customer) => isWonStatus(customer.status) && String(customer.expectedClose || "").startsWith(currentKey))
+    .filter((customer) => isWonStatus(customer.status) && String(customer.firstPaymentDate || customer.expectedClose || "").startsWith(currentKey))
     .reduce((sum, customer) => sum + storedCollectedBeforeSst(customer), 0);
   return paymentTotal + manualCollected;
+}
+
+function customerWonDate(customer) {
+  if (customer.firstPaymentDate) return customer.firstPaymentDate;
+  const payments = customerPayments(customer.id);
+  if (payments.length) return payments[payments.length - 1].paymentDate;
+  return customer.expectedClose || "";
 }
 
 function wonCustomersFor(customers, currentKey = "") {
   return customers.filter((customer) => {
     if (!isWonStatus(customer.status)) return false;
-    return !currentKey || String(customer.expectedClose || "").startsWith(currentKey);
+    return !currentKey || String(customerWonDate(customer)).startsWith(currentKey);
   });
 }
 
